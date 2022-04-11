@@ -9,6 +9,9 @@ mod lockable_map_impl;
 mod map_like;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 mod lockable_hash_map;
 #[cfg(feature = "lru")]
 mod lockable_lru_cache;
