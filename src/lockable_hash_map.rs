@@ -321,10 +321,21 @@ where
     }
 }
 
-/// TODO Docs
+/// A non-owning guard holding a lock for an entry in a [LockableHashMap].
+/// This guard is created via [LockableHashMap::blocking_lock], [LockableHashMap::async_lock]
+/// or [LockableHashMap::try_lock] and its lifetime is bound to the lifetime
+/// of the [LockableHashMap].
+/// 
+/// See the documentation of [GuardImpl] for methods.
 pub type HashMapGuard<'a, K, V> =
     GuardImpl<MapImpl<K, V>, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, NoopHooks>>;
-/// TODO Docs
+
+/// A owning guard holding a lock for an entry in a [LockableHashMap].
+/// This guard is created via [LockableHashMap::blocking_lock_owned], [LockableHashMap::async_lock_owned]
+/// or [LockableHashMap::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableHashMap]
+/// within its [Arc].
+/// 
+/// See the documentation of [GuardImpl] for methods.
 pub type HashMapOwnedGuard<K, V> = GuardImpl<MapImpl<K, V>, NoopHooks, Arc<LockableHashMap<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance

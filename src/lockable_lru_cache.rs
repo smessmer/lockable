@@ -324,10 +324,21 @@ where
     }
 }
 
-/// TODO Docs
+/// A non-owning guard holding a lock for an entry in a [LockableLruCache].
+/// This guard is created via [LockableLruCache::blocking_lock], [LockableLruCache::async_lock]
+/// or [LockableLruCache::try_lock] and its lifetime is bound to the lifetime
+/// of the [LockableLruCache].
+/// 
+/// See the documentation of [GuardImpl] for methods.
 pub type LruGuard<'a, K, V> =
     GuardImpl<MapImpl<K, V>, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, NoopHooks>>;
-/// TODO Docs
+
+/// A owning guard holding a lock for an entry in a [LockableLruCache].
+/// This guard is created via [LockableLruCache::blocking_lock_owned], [LockableLruCache::async_lock_owned]
+/// or [LockableLruCache::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableLruCache]
+/// within its [Arc].
+/// 
+/// See the documentation of [GuardImpl] for methods.
 pub type LruOwnedGuard<K, V> = GuardImpl<MapImpl<K, V>, NoopHooks, Arc<LockableLruCache<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache> because that's the way, our LockableMapImpl can "see through" an instance
