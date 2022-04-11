@@ -1,16 +1,16 @@
 [package]
 authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 edition = "2021"
-name = "lockpool"
-version = "2.0.2"
+name = "lockable"
+version = "0.0.1"
 readme = "README.md"
-documentation = "https://docs.rs/lockpool"
-homepage = "https://github.com/smessmer/lockpool"
-repository = "https://github.com/smessmer/lockpool"
+documentation = "https://docs.rs/lockable"
+homepage = "https://github.com/smessmer/lockable"
+repository = "https://github.com/smessmer/lockable"
 license = "MIT OR Apache-2.0"
 keywords = ["concurrency", "thread", "locks", "mutex"]
 categories = ["asynchronous", "concurrency"]
-description = "This library offers a pool of locks where individual locks can be locked/unlocked by key"
+description = "This library offers hash map and cache data structures where individual entries can be locked"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,24 +18,13 @@ description = "This library offers a pool of locks where individual locks can be
 [dependencies]
 anyhow = "^1.0.56"
 futures = "^0.3.21"
-# TODO Make lru optional
-lru = "^0.7.5"
+lru = {version = "^0.7.5", optional = true}
 owning_ref = {git = "https://github.com/smessmer/owning-ref-rs.git", rev = "33b9630201751021958405ac956d5f2ea23f4909"}
 thiserror = "^1.0.30"
-tokio = {version = "^1.17.0", features = ["sync"]}
-# async-trait = {version = "^0.1.52", optional = true}
+tokio = {version = "^1.17.0", features = ["sync", "rt"]}
 
 [dev-dependencies]
-#criterion = "^0.3.5"
-#crossbeam-utils = "^0.8.7"
 tokio = {version = "^1.17.0", features = ["sync", "time", "macros", "rt-multi-thread"]}
 
 [features]
-#tokio = ["dep:tokio", "dep:async-trait"]
-
-#[[bench]]
-#name = "bench"
-#harness = false
-
-[profile.release]
-lto = "fat"
+lru = ["dep:lru"]

@@ -1,127 +1,150 @@
-use anyhow::Result;
-use futures::stream::Stream;
-use futures::{future, stream::FuturesUnordered, StreamExt};
-use lru::LruCache;
+use futures::Stream;
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Deref;
 use std::sync::Arc;
-use tokio::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use super::error::TryLockError;
-use super::guard::{Guard, GuardImpl, OwnedGuard};
-use crate::utils::locked_mutex_guard::LockedMutexGuard;
+use super::guard::GuardImpl;
+use super::hooks::NoopHooks;
+use super::lockable_map_impl::LockableMapImpl;
+use super::map_like::{ArcMutexMapLike, EntryValue};
 
-// TODO Fix code samples in documentation
+impl<K, V> ArcMutexMapLike for HashMap<K, Arc<Mutex<EntryValue<V>>>>
+where
+    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+    V: Debug + 'static,
+{
+    type K = K;
+    type V = V;
 
-pub(super) struct CacheEntry<V> {
-    pub(super) value: Option<V>,
+    fn new() -> Self {
+        Self::new()
+    }
 
-    // last_unlocked gets updated whenever we are finished with an item,
-    // i.e. when it gets unlocked and returned to the cache.
-    // Since getting it from the cache is the action that moves it to the top
-    // of the LRU order, there can be a temporary mismatch between the
-    // timestamp order and the LRU order, but only for as long as the
-    // item is locked and we can't access the timestamp anyways while
-    // it is locked.
-    // TODO Test last_unlocked is correctly updated
-    last_unlocked: Instant,
-}
+    fn len(&self) -> usize {
+        self.into_iter().len()
+    }
 
-impl<V> Debug for CacheEntry<V> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_struct("CacheEntry")
-            .field("last_unlocked", &self.last_unlocked)
-            .finish()
+    fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>> {
+        // TODO Is there a way to only clone the key when the entry doesn't already exist?
+        self.entry(key.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(EntryValue { value: None })))
+    }
+
+    fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>> {
+        HashMap::get(self, key)
+    }
+
+    fn remove(&mut self, key: &Self::K) -> Option<Arc<Mutex<EntryValue<Self::V>>>> {
+        self.remove(key)
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_> {
+        Box::new(HashMap::iter(self))
     }
 }
 
-/// A cache where individual keys can be locked/unlocked, even if they don't carry any data in the cache.
+type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
+
+/// A threadsafe hash map where individual keys can be locked/unlocked, even if there is no entry for this key in the map.
 /// It initially considers all keys as "unlocked", but they can be locked
 /// and if a second thread tries to acquire a lock for the same key, they will have to wait.
 ///
 /// ```
-/// use crate::blockstore::high_level::cache::LockableCache;
+/// use lockable::LockableHashMap;
 ///
-/// let pool: LockableCache<i64, String> = LockableCache::new();
-/// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-/// let guard1 = pool.lock(4)?;
-/// let guard2 = pool.lock(5)?;
+/// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let entry1 = hash_map.async_lock(4).await;
+/// let entry2 = hash_map.async_lock(5).await;
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-/// // let guard3 = pool.lock(4)?;
+/// // let entry3 = hash_map.async_lock(4).await;
 ///
 /// // After dropping the corresponding guard, we can lock it again
-/// std::mem::drop(guard1);
-/// let guard3 = pool.lock(4)?;
-/// # Ok(())
-/// # })().unwrap();
+/// std::mem::drop(entry1);
+/// let entry3 = hash_map.async_lock(4).await;
+/// # });
 /// ```
 ///
-/// You can use an arbitrary type to index cache entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
+/// The guards holding a lock for an entry can be used to insert that entry to the hash map, remove it from the hash map, or to modify
+/// the value of an existing entry.
 ///
 /// ```
-/// use lockpool::{LockPool, SyncLockPool};
+/// use lockable::LockableHashMap;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// async fn insert_entry(hash_map: &LockableHashMap<i64, String>) {
+///     let mut entry = hash_map.async_lock(4).await;
+///     entry.insert(String::from("Hello World"));
+/// }
+///
+/// async fn remove_entry(hash_map: &LockableHashMap<i64, String>) {
+///     let mut entry = hash_map.async_lock(4).await;
+///     entry.remove();
+/// }
+///
+/// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
+/// assert_eq!(None, hash_map.async_lock(4).await.value());
+/// insert_entry(&hash_map).await;
+/// assert_eq!(Some(&String::from("Hello World")), hash_map.async_lock(4).await.value());
+/// remove_entry(&hash_map).await;
+/// assert_eq!(None, hash_map.async_lock(4).await.value());
+/// # });
+/// ```
+///
+///
+/// You can use an arbitrary type to index hash map entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
+///
+/// ```
+/// use lockable::LockableHashMap;
 ///
 /// #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 /// struct CustomLockKey(u32);
 ///
-/// let pool = SyncLockPool::new();
-/// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-/// let guard = pool.lock(CustomLockKey(4))?;
-/// # Ok(())
-/// # })().unwrap();
+/// let hash_map: LockableHashMap<CustomLockKey, String> = LockableHashMap::new();
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let guard = hash_map.async_lock(CustomLockKey(4)).await;
+/// # });
 /// ```
 ///
-/// Under the hood, a [LockableCache] is a [LruCache](lru::LruCache) of [Mutex](tokio::sync::Mutex)es, with some logic making sure there aren't any race conditions when adding or removing entries.
-pub struct LockableCache<K, V>
+/// Under the hood, a [LockableHashMap] is a [std::collections::HashMap] of [Mutex](tokio::sync::Mutex)es, with some logic making sure there aren't any race conditions when adding or removing entries.
+pub struct LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+    V: Debug + 'static,
 {
-    // We always use std::sync::Mutex for protecting the LruCache since its guards
-    // never have to be kept across await boundaries, and std::sync::Mutex is faster
-    // than tokio::sync::Mutex. But the inner per-key locks use tokio::sync::Mutex
-    // because they need to be kep across await boundaries.
-    // Invariants:
-    // - Any entries not currently locked will never be None. None is only entered
-    //   into the cache to denote values that are currrently locked but don't actually
-    //   have data in the cache. This invariant is mostly meant to clean up space.
-    // - The timestamps in CacheEntry will follow the same order as the LRU order of the cache,
-    //   with an exception for currently locked entries that may be temporarily out of order
-    //   while the entry is locked.
-    // - We never hand the inner Arc around a cache entry out of the encapsulation of this class,
-    //   except through non-cloneable Guard objects encapsulating those Arcs.
-    //   This allows us to reason about which threads can or cannot increase the refcounts.
-    cache_entries: std::sync::Mutex<LruCache<K, Arc<tokio::sync::Mutex<CacheEntry<V>>>>>,
+    map_impl: LockableMapImpl<MapImpl<K, V>, NoopHooks>,
 }
 
-impl<K, V> LockableCache<K, V>
+impl<K, V> LockableHashMap<K, V>
 where
-    // TODO Can we remove the 'static bound from K and V?
     K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: 'static,
+    V: Debug + 'static,
 {
-    /// Create a new cache with no entries and no locked keys
+    /// Create a new hash map with no entries and no locked keys.
     #[inline]
     pub fn new() -> Self {
         Self {
-            cache_entries: std::sync::Mutex::new(LruCache::unbounded()),
+            map_impl: LockableMapImpl::new(),
         }
     }
 
-    /// Return the number of cache entries.
+    /// Return the number of map entries.
     ///
-    /// Corner case: Currently locked keys are counted even if they don't have any data in the cache.
+    /// Corner case: Currently locked keys are counted even if they don't exist in the map.
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
-        self._cache_entries().len()
+        self.map_impl.num_entries_or_locked()
     }
 
-    /// Lock a key and return a guard with any potential cache entry for that key.
-    /// Any changes to that entry will be written back to the cache when the mutex leaves scope.
-    /// Cache entries can be created by locking an entry and replacing the None with a Some and
-    /// can be removed by replacing it with None.
+    /// Lock a key and return a guard with any potential map entry for that key.
+    /// Any changes to that entry will be persisted in the map.
+    /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
+    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different thread, then the current thread blocks until it becomes available.
     /// Upon returning, the thread is the only thread with the lock held. A RAII guard is returned to allow scoped unlock
@@ -141,30 +164,28 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockpool::{LockPool, SyncLockPool};
+    /// use lockable::LockableHashMap;
     ///
-    /// let pool = SyncLockPool::new();
-    /// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-    /// let guard1 = pool.lock(4)?;
-    /// let guard2 = pool.lock(5)?;
+    /// let hash_map = LockableHashMap::<i64, String>::new();
+    /// let guard1 = hash_map.blocking_lock(4);
+    /// let guard2 = hash_map.blocking_lock(5);
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = pool.lock(4)?;
+    /// // let guard3 = hash_map.blocking_lock(4);
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.lock(4)?;
-    /// # Ok(())
-    /// # })().unwrap();
+    /// let guard3 = hash_map.blocking_lock(4);
     /// ```
-    pub fn blocking_lock(&self, key: K) -> Guard<'_, K, V> {
-        Self::_blocking_lock(self, key)
+    #[inline]
+    pub fn blocking_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
+        LockableMapImpl::blocking_lock(&self.map_impl, key)
     }
 
-    /// Lock a lock by key and return a guard with any potential cache entry for that key.
+    /// Lock a lock by key and return a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableCache::blocking_lock], but it works on an `Arc<LockableCache>` instead of a [LockableCache] and
-    /// returns a [OwnedGuard] that binds its lifetime to the [LockableCache] in that [Arc]. Such an [OwnedGuard] can be more
+    /// This is identical to [LockableHashMap::blocking_lock], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
+    /// returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
     /// This function can be used from non-async contexts but will panic if used from async contexts.
@@ -178,31 +199,29 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockpool::{LockPool, SyncLockPool};
+    /// use lockable::LockableHashMap;
     /// use std::sync::Arc;
     ///
-    /// let pool = Arc::new(SyncLockPool::new());
-    /// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-    /// let guard1 = pool.lock_owned(4)?;
-    /// let guard2 = pool.lock_owned(5)?;
+    /// let hash_map = Arc::new(LockableHashMap::<i64, String>::new());
+    /// let guard1 = hash_map.blocking_lock_owned(4);
+    /// let guard2 = hash_map.blocking_lock_owned(5);
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = pool.lock_owned(4)?;
+    /// // let guard3 = hash_map.blocking_lock_owned(4);
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.lock_owned(4)?;
-    /// # Ok(())
-    /// # })().unwrap();
+    /// let guard3 = hash_map.blocking_lock_owned(4);
     /// ```
-    pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> OwnedGuard<K, V> {
-        Self::_blocking_lock(Arc::clone(self), key)
+    #[inline]
+    pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
+        LockableMapImpl::blocking_lock(Arc::clone(self), key)
     }
 
-    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
-    /// Any changes to that entry will be written back to the cache when the mutex leaves scope.
-    /// Cache entries can be created by locking an entry and replacing the None with a Some and
-    /// can be removed by replacing it with None.
+    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
+    /// Any changes to that entry will be persisted in the map.
+    /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
+    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
     ///
     /// If the lock could not be acquired at this time, then [Err] is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
@@ -216,31 +235,30 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockpool::{TryLockError, LockPool, SyncLockPool};
+    /// use lockable::{TryLockError, LockableHashMap};
     ///
-    /// let pool = SyncLockPool::new();
-    /// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-    /// let guard1 = pool.lock(4)?;
-    /// let guard2 = pool.lock(5)?;
+    /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
+    /// let guard1 = hash_map.blocking_lock(4);
+    /// let guard2 = hash_map.blocking_lock(5);
     ///
-    /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock(4);
+    /// // This next line cannot acquire the lock because `4` is already locked on this thread
+    /// let guard3 = hash_map.try_lock(4);
     /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.lock(4)?;
-    /// # Ok(())
-    /// # })().unwrap();
+    /// let guard3 = hash_map.try_lock(4);
+    /// assert!(guard3.is_ok());
     /// ```
-    pub fn try_lock(&self, key: K) -> Result<Guard<'_, K, V>, TryLockError> {
-        Self::_try_lock(self, key)
+    #[inline]
+    pub fn try_lock(&self, key: K) -> Result<HashMapGuard<'_, K, V>, TryLockError> {
+        LockableMapImpl::try_lock(&self.map_impl, key)
     }
 
-    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
+    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableCache::try_lock], but it works on an `Arc<LockableCache>` instead of a [LockableCache] and
-    /// returns an [OwnedGuard] that binds its lifetime to the [LockableCache] in that [Arc]. Such an [OwnedGuard] can be more
+    /// This is identical to [LockableHashMap::try_lock], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
+    /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
     /// This function does not block and can be used in both async and non-async contexts.
@@ -252,225 +270,81 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockpool::{TryLockError, LockPool, SyncLockPool};
+    /// use lockable::{TryLockError, LockableHashMap};
     /// use std::sync::Arc;
     ///
-    /// let pool = Arc::new(SyncLockPool::new());
-    /// # (|| -> Result<(), lockpool::PoisonError<_, _>> {
-    /// let guard1 = pool.lock(4)?;
-    /// let guard2 = pool.lock(5)?;
+    /// let pool = Arc::new(LockableHashMap::<i64, String>::new());
+    /// let guard1 = pool.blocking_lock(4);
+    /// let guard2 = pool.blocking_lock(5);
     ///
-    /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
+    /// // This next line cannot acquire the lock because `4` is already locked on this thread
     /// let guard3 = pool.try_lock_owned(4);
     /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.lock(4)?;
-    /// # Ok(())
-    /// # })().unwrap();
+    /// let guard3 = pool.try_lock(4);
+    /// assert!(guard3.is_ok());
     /// ```
-    pub fn try_lock_owned(self: &Arc<Self>, key: K) -> Result<OwnedGuard<K, V>, TryLockError> {
-        Self::_try_lock(Arc::clone(self), key)
-    }
-
-    fn _cache_entries(
-        &self,
-    ) -> std::sync::MutexGuard<'_, LruCache<K, Arc<tokio::sync::Mutex<CacheEntry<V>>>>> {
-        self.cache_entries
-            .lock()
-            .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
-    }
-
-    pub(super) fn _load_or_insert_mutex_for_key(
-        &self,
+    #[inline]
+    pub fn try_lock_owned(
+        self: &Arc<Self>,
         key: K,
-    ) -> Arc<tokio::sync::Mutex<CacheEntry<V>>> {
-        let mut cache_entries = self._cache_entries();
-        let entry = cache_entries
-            // TODO Remove clone()
-            .get_or_insert(key.clone(), || {
-                Arc::new(tokio::sync::Mutex::new(CacheEntry {        
-                    last_unlocked: Instant::now(),
-                    value: None,
-                }))
-            })
-            .expect(
-                "Cache capacity is zero. This can't happen since we created an unbounded cache",
-            );
-        Arc::clone(entry)
-    }
-
-    fn _blocking_lock<S: Deref<Target = Self>>(this: S, key: K) -> GuardImpl<K, V, S> {
-        let mutex = this._load_or_insert_mutex_for_key(key.clone());
-        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
-        // The following blocks until the mutex for this key is acquired.
-
-        let guard = LockedMutexGuard::blocking_lock(mutex);
-        GuardImpl::new(this, key, guard)
-    }
-
-    fn _try_lock<S: Deref<Target = Self>>(
-        this: S,
-        key: K,
-    ) -> Result<GuardImpl<K, V, S>, TryLockError> {
-        let mutex = this._load_or_insert_mutex_for_key(key.clone());
-        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
-        // The following tries to lock the mutex.
-
-        let guard = match LockedMutexGuard::try_lock(mutex) {
-            Ok(guard) => Ok(guard),
-            Err(_) => Err(TryLockError::WouldBlock),
-        }?;
-        let guard = GuardImpl::new(this, key, guard);
-        Ok(guard)
-    }
-
-    pub(super) fn _unlock(&self, key: &K, mut guard: LockedMutexGuard<CacheEntry<V>>) {
-        let mut cache_entries = self._cache_entries();
-        let mutex: &Arc<tokio::sync::Mutex<CacheEntry<V>>> = cache_entries
-            .get(key)
-            .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
-        guard.last_unlocked = Instant::now();
-        let entry_carries_a_value = guard.value.is_some();
-        std::mem::drop(guard);
-
-        // Now the guard is dropped and the lock for this key is unlocked.
-        // If there are any other Self::lock() calls for this key already running and
-        // waiting for the mutex, they will be unblocked now and their guard
-        // will be created.
-        // But since we still have the global mutex on self.cache_entries, currently no
-        // thread can newly call Self::lock() and create a clone of our Arc. Similarly,
-        // no other thread can enter Self::unlock() and reduce the strong_count of the Arc.
-        // This means that if Arc::strong_count() == 1, we know that we can clean up
-        // without race conditions.
-
-        if Arc::strong_count(mutex) == 1 {
-            // The guard we're about to drop is the last guard for this mutex,
-            // the only other Arc pointing to it is the one in the hashmap.
-            // If it carries a value, keep it, but it doesn't carry a value,
-            // clean up to fulfill the invariant
-            if !entry_carries_a_value {
-                let remove_result = cache_entries.pop(key);
-                assert!(
-                    remove_result.is_some(),
-                    "We just got this entry above from the hash map, it cannot have vanished since then"
-                );
-            }
-        }
+    ) -> Result<HashMapOwnedGuard<K, V>, TryLockError> {
+        LockableMapImpl::try_lock(Arc::clone(self), key)
     }
 
     /// TODO Docs
-    pub async fn async_lock(&self, key: K) -> Guard<'_, K, V> {
-        Self::_async_lock(self, key).await
+    #[inline]
+    pub async fn async_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
+        LockableMapImpl::async_lock(&self.map_impl, key).await
     }
 
     /// TODO Docs
-    pub async fn async_lock_owned(self: &Arc<Self>, key: K) -> OwnedGuard<K, V> {
-        Self::_async_lock(Arc::clone(self), key).await
-    }
-
-    async fn _async_lock<S: Deref<Target = Self>>(this: S, key: K) -> GuardImpl<K, V, S> {
-        let mutex = this._load_or_insert_mutex_for_key(key.clone());
-        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
-        // The following blocks until the mutex for this key is acquired.
-
-        let guard = LockedMutexGuard::async_lock(mutex).await;
-        GuardImpl::new(this, key, guard)
+    #[inline]
+    pub async fn async_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
+        LockableMapImpl::async_lock(Arc::clone(self), key).await
     }
 
     /// TODO Docs
     /// TODO Test
-    pub fn lock_entries_unlocked_for_longer_than(
-        &self,
-        duration: Duration,
-    ) -> Vec<Guard<'_, K, V>> {
-        let now = Instant::now();
-        let mut result = vec![];
-        let cache_entries = self._cache_entries();
-        let mut current_entry_timestamp = None;
-        // TODO Check that iter().rev() actually starts with the oldest ones and not with the newest once. Otherwise, remove .rev().
-        for (key, entry) in cache_entries.iter().rev() {
-            if Arc::strong_count(&entry) == 1 {
-                // There is currently nobody who has access to this mutex and could lock it.
-                // And since we're also blocking the global cache mutex, nobody can get it.
-                // We must be able to lock this and we can safely prune it.
-                let guard = LockedMutexGuard::try_lock(Arc::clone(&entry)).expect(
-                    "We just checked that nobody can lock this. But for some reason it was locked.",
-                );
-                assert!(
-                    guard.last_unlocked >= current_entry_timestamp.unwrap_or(guard.last_unlocked),
-                    "Cache order broken - entries don't seem to be in LRU order"
-                );
-                current_entry_timestamp = Some(guard.last_unlocked);
-
-                if now - guard.last_unlocked <= duration {
-                    // The next entry is too new to be pruned
-                    // TODO Assert that all remaining entries are too new to be pruned, i.e. continue walk through remaining entries and check order
-                    return result;
-                }
-
-                result.push(Guard::new(self, key.clone(), guard));
-            } else {
-                // Somebody currently has access to this mutex and is likely going to lock it.
-                // This means the entry shouldn't be pruned, it will soon get a new timestamp.
-            }
-        }
-
-        // We ran out of entries to check, no entry is too new to be pruned.
-        result
-    }
-
-    /// TODO Docs
-    /// TODO Test
+    #[inline]
     pub fn into_entries_unordered(self) -> impl Stream<Item = (K, V)> {
-        let entries: LruCache<_, _> = self.cache_entries.into_inner().expect("Lock poisoned");
-
-        // We now have exclusive access to the LruCache object. No other thread or task can call lock() and increase
-        // the refcount for one of the Arcs. They still can have (un-cloneable) Guard instances and those will eventually call
-        // _unlock() on destruction. We just need to wait until the last thread gives up an Arc and then we can remove it from the mutex.
-
-        let entries: FuturesUnordered<_> = entries
-            .into_iter()
-            .map(|(key, value)| future::ready((key, value)))
-            .collect();
-        entries.filter_map(|(key, value)| async {
-            while Arc::strong_count(&value) > 1 {
-                // TODO Is there a better alternative that doesn't involve busy waiting?
-                tokio::task::yield_now().await;
-            }
-            // Now we're the last task having a reference to this arc.
-            let value = Arc::try_unwrap(value)
-                .expect("This can't fail since we are the only task having access");
-            let value = value.into_inner();
-
-            // Ignore None entries
-            value.value.map(|value| (key, value))
-        })
+        self.map_impl.into_entries_unordered()
     }
 
-    // TODO Docs
-    // TODO Test
+    /// TODO Docs
+    /// TODO Test
+    #[inline]
     pub fn keys(&self) -> Vec<K> {
-        let cache_entries = self._cache_entries();
-        cache_entries.iter().map(|(key, _value)| key).cloned().collect()
+        self.map_impl.keys()
     }
 }
 
-impl<K, V> Debug for LockableCache<K, V>
+/// TODO Docs
+pub type HashMapGuard<'a, K, V> =
+    GuardImpl<MapImpl<K, V>, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, NoopHooks>>;
+/// TODO Docs
+pub type HashMapOwnedGuard<K, V> = GuardImpl<MapImpl<K, V>, NoopHooks, Arc<LockableHashMap<K, V>>>;
+
+// We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
+// of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
+// Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
+impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, NoopHooks>> for Arc<LockableHashMap<K, V>>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+    V: Debug + 'static,
 {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_struct("LockableCache").finish()
+    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, NoopHooks> {
+        &self.map_impl
     }
 }
 
+// TODO Deduplicate tests with the tests for LockableLruCache
 #[cfg(test)]
 mod tests {
     use super::super::error::TryLockError;
-    use super::LockableCache;
+    use super::LockableHashMap;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread::{self, JoinHandle};
@@ -484,7 +358,7 @@ mod tests {
     // 2. once it has the lock, increments a counter
     // 3. then waits until a barrier is released before it releases the lock
     fn launch_thread_blocking_lock(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -502,7 +376,7 @@ mod tests {
     }
 
     fn launch_thread_blocking_lock_owned(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -520,7 +394,7 @@ mod tests {
     }
 
     fn launch_thread_try_lock(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -547,7 +421,7 @@ mod tests {
     }
 
     fn launch_thread_try_lock_owned(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -574,7 +448,7 @@ mod tests {
     }
 
     fn launch_thread_async_lock(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -593,7 +467,7 @@ mod tests {
     }
 
     fn launch_thread_async_lock_owned(
-        pool: &Arc<LockableCache<isize, String>>,
+        pool: &Arc<LockableHashMap<isize, String>>,
         key: isize,
         counter: &Arc<AtomicU32>,
         barrier: Option<&Arc<Mutex<()>>>,
@@ -616,7 +490,7 @@ mod tests {
         expected = "Cannot start a runtime from within a runtime. This happens because a function (like `block_on`) attempted to block the current thread while the thread is being used to drive asynchronous tasks."
     )]
     async fn blocking_lock_from_async_context_with_sync_api() {
-        let p = LockableCache::<isize, String>::new();
+        let p = LockableHashMap::<isize, String>::new();
         let _ = p.blocking_lock(3);
     }
 
@@ -625,7 +499,7 @@ mod tests {
         expected = "Cannot start a runtime from within a runtime. This happens because a function (like `block_on`) attempted to block the current thread while the thread is being used to drive asynchronous tasks."
     )]
     async fn blocking_lock_owned_from_async_context_with_sync_api() {
-        let p = Arc::new(LockableCache::<isize, String>::new());
+        let p = Arc::new(LockableHashMap::<isize, String>::new());
         let _ = p.blocking_lock_owned(3);
     }
 
@@ -634,10 +508,10 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.async_lock(4).await;
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -645,10 +519,10 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.async_lock_owned(4).await;
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -656,10 +530,10 @@ mod tests {
 
         #[test]
         fn blocking_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.blocking_lock(4);
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -667,10 +541,10 @@ mod tests {
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.blocking_lock_owned(4);
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -678,10 +552,10 @@ mod tests {
 
         #[test]
         fn try_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.try_lock(4).unwrap();
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -689,10 +563,10 @@ mod tests {
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard = pool.try_lock_owned(4).unwrap();
-            assert!(guard.is_none());
+            assert!(guard.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(0, pool.num_entries_or_locked());
@@ -704,7 +578,7 @@ mod tests {
 
         #[test]
         fn try_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock(5);
 
             let error = pool.try_lock(5).unwrap_err();
@@ -728,7 +602,7 @@ mod tests {
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock_owned(5);
 
             let error = pool.try_lock_owned(5).unwrap_err();
@@ -756,91 +630,91 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.async_lock(4).await;
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.async_lock(4).await,
-                Some(String::from("Cache Entry Value"))
+                pool.async_lock(4).await.value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.async_lock_owned(4).await;
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.async_lock_owned(4).await,
-                Some(String::from("Cache Entry Value"))
+                pool.async_lock_owned(4).await.value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
 
         #[test]
         fn blocking_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.blocking_lock(4);
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.blocking_lock(4),
-                Some(String::from("Cache Entry Value"))
+                pool.blocking_lock(4).value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.blocking_lock_owned(4);
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.blocking_lock_owned(4),
-                Some(String::from("Cache Entry Value"))
+                pool.blocking_lock_owned(4).value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
 
         #[test]
         fn try_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.try_lock(4).unwrap();
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.try_lock(4).unwrap(),
-                Some(String::from("Cache Entry Value"))
+                pool.try_lock(4).unwrap().value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let mut guard = pool.try_lock_owned(4).unwrap();
-            *guard = Some(String::from("Cache Entry Value"));
+            guard.insert(String::from("Cache Entry Value"));
             assert_eq!(1, pool.num_entries_or_locked());
             std::mem::drop(guard);
             assert_eq!(1, pool.num_entries_or_locked());
             assert_eq!(
-                *pool.try_lock_owned(4).unwrap(),
-                Some(String::from("Cache Entry Value"))
+                pool.try_lock_owned(4).unwrap().value(),
+                Some(&String::from("Cache Entry Value"))
             );
         }
     }
@@ -850,86 +724,96 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = LockableCache::<isize, String>::new();
-            *pool.async_lock(4).await = Some(String::from("Cache Entry Value"));
+            let pool = LockableHashMap::<isize, String>::new();
+            pool.async_lock(4)
+                .await
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.async_lock(4).await;
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.async_lock(4).await, None);
+            assert_eq!(pool.async_lock(4).await.value(), None);
         }
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
-            *pool.async_lock_owned(4).await = Some(String::from("Cache Entry Value"));
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
+            pool.async_lock_owned(4)
+                .await
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.async_lock_owned(4).await;
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.async_lock_owned(4).await, None);
+            assert_eq!(pool.async_lock_owned(4).await.value(), None);
         }
 
         #[test]
         fn blocking_lock() {
-            let pool = LockableCache::<isize, String>::new();
-            *pool.blocking_lock(4) = Some(String::from("Cache Entry Value"));
+            let pool = LockableHashMap::<isize, String>::new();
+            pool.blocking_lock(4)
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.blocking_lock(4);
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.blocking_lock(4), None);
+            assert_eq!(pool.blocking_lock(4).value(), None);
         }
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
-            *pool.blocking_lock_owned(4) = Some(String::from("Cache Entry Value"));
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
+            pool.blocking_lock_owned(4)
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.blocking_lock_owned(4);
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.blocking_lock_owned(4), None);
+            assert_eq!(pool.blocking_lock_owned(4).value(), None);
         }
 
         #[test]
         fn try_lock() {
-            let pool = LockableCache::<isize, String>::new();
-            *pool.try_lock(4).unwrap() = Some(String::from("Cache Entry Value"));
+            let pool = LockableHashMap::<isize, String>::new();
+            pool.try_lock(4)
+                .unwrap()
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.try_lock(4).unwrap();
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.try_lock(4).unwrap(), None);
+            assert_eq!(pool.try_lock(4).unwrap().value(), None);
         }
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
-            *pool.try_lock_owned(4).unwrap() = Some(String::from("Cache Entry Value"));
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
+            pool.try_lock_owned(4)
+                .unwrap()
+                .insert(String::from("Cache Entry Value"));
 
             assert_eq!(1, pool.num_entries_or_locked());
             let mut guard = pool.try_lock_owned(4).unwrap();
-            *guard = None;
+            guard.remove();
             std::mem::drop(guard);
 
             assert_eq!(0, pool.num_entries_or_locked());
-            assert_eq!(*pool.try_lock_owned(4).unwrap(), None);
+            assert_eq!(pool.try_lock_owned(4).unwrap().value(), None);
         }
     }
 
@@ -938,16 +822,16 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.async_lock(1).await;
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.async_lock(2).await;
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.async_lock(3).await;
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -960,16 +844,16 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.async_lock_owned(1).await;
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.async_lock_owned(2).await;
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.async_lock_owned(3).await;
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -982,16 +866,16 @@ mod tests {
 
         #[test]
         fn blocking_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.blocking_lock(1);
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.blocking_lock(2);
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.blocking_lock(3);
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -1004,16 +888,16 @@ mod tests {
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.blocking_lock_owned(1);
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.blocking_lock_owned(2);
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.blocking_lock_owned(3);
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -1026,16 +910,16 @@ mod tests {
 
         #[test]
         fn try_lock() {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.try_lock(1).unwrap();
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.try_lock(2).unwrap();
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.try_lock(3).unwrap();
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -1048,16 +932,16 @@ mod tests {
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             assert_eq!(0, pool.num_entries_or_locked());
             let guard1 = pool.try_lock_owned(1).unwrap();
-            assert!(guard1.is_none());
+            assert!(guard1.value().is_none());
             assert_eq!(1, pool.num_entries_or_locked());
             let guard2 = pool.try_lock_owned(2).unwrap();
-            assert!(guard2.is_none());
+            assert!(guard2.value().is_none());
             assert_eq!(2, pool.num_entries_or_locked());
             let guard3 = pool.try_lock_owned(3).unwrap();
-            assert!(guard3.is_none());
+            assert!(guard3.value().is_none());
             assert_eq!(3, pool.num_entries_or_locked());
 
             std::mem::drop(guard2);
@@ -1074,7 +958,7 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.async_lock(5).await;
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1102,7 +986,7 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.async_lock_owned(5).await;
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1130,7 +1014,7 @@ mod tests {
 
         #[test]
         fn blocking_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock(5);
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1158,7 +1042,7 @@ mod tests {
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock_owned(5);
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1186,7 +1070,7 @@ mod tests {
 
         #[test]
         fn try_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.try_lock(5).unwrap();
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1214,7 +1098,7 @@ mod tests {
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.try_lock_owned(5).unwrap();
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1246,7 +1130,7 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.async_lock(5).await;
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1285,7 +1169,7 @@ mod tests {
 
         #[tokio::test]
         async fn async_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.async_lock_owned(5).await;
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1324,7 +1208,7 @@ mod tests {
 
         #[test]
         fn blocking_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock(5);
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1363,7 +1247,7 @@ mod tests {
 
         #[test]
         fn blocking_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.blocking_lock_owned(5);
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1402,7 +1286,7 @@ mod tests {
 
         #[test]
         fn try_lock() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.try_lock(5).unwrap();
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1441,7 +1325,7 @@ mod tests {
 
         #[test]
         fn try_lock_owned() {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.try_lock_owned(5).unwrap();
 
             let counter = Arc::new(AtomicU32::new(0));
@@ -1482,7 +1366,7 @@ mod tests {
     #[test]
     fn blocking_lock_owned_guards_can_be_passed_around() {
         let make_guard = || {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             pool.blocking_lock_owned(5)
         };
         let _guard = make_guard();
@@ -1491,7 +1375,7 @@ mod tests {
     #[tokio::test]
     async fn async_lock_owned_guards_can_be_passed_around() {
         let make_guard = || async {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             pool.async_lock_owned(5).await
         };
         let _guard = make_guard().await;
@@ -1500,7 +1384,7 @@ mod tests {
     #[test]
     fn test_try_lock_owned_guards_can_be_passed_around() {
         let make_guard = || {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             pool.try_lock_owned(5)
         };
         let guard = make_guard();
@@ -1510,7 +1394,7 @@ mod tests {
     #[tokio::test]
     async fn async_lock_guards_can_be_held_across_await_points() {
         let task = async {
-            let pool = LockableCache::<isize, String>::new();
+            let pool = LockableHashMap::<isize, String>::new();
             let guard = pool.async_lock(3).await;
             tokio::time::sleep(Duration::from_millis(10)).await;
             std::mem::drop(guard);
@@ -1527,7 +1411,7 @@ mod tests {
     #[tokio::test]
     async fn async_lock_owned_guards_can_be_held_across_await_points() {
         let task = async {
-            let pool = Arc::new(LockableCache::<isize, String>::new());
+            let pool = Arc::new(LockableHashMap::<isize, String>::new());
             let guard = pool.async_lock_owned(3).await;
             tokio::time::sleep(Duration::from_millis(10)).await;
             std::mem::drop(guard);

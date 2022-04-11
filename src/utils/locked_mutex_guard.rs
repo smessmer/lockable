@@ -7,7 +7,7 @@ use tokio::sync::{Mutex, MutexGuard, TryLockError};
 
 /// A LockedMutexGuard carries an Arc<Mutex<T>> together with a MutexGuard locking that Data.
 pub struct LockedMutexGuard<T: 'static> {
-    // TODO Is 'static needed?
+    // TODO Is T:'static needed?
     mutex_and_guard: OwningHandle<Arc<Mutex<T>>, MutexGuard<'static, T>>,
 }
 
