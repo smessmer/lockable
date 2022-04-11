@@ -1,7 +1,6 @@
 [package]
 authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 edition = "2021"
-rust-version = "1.60.0"
 name = "lockable"
 version = "0.0.2"
 readme = "README.md"
@@ -25,6 +24,3 @@ tokio = {version = "^1.17.0", features = ["sync", "rt"]}
 
 [dev-dependencies]
 tokio = {version = "^1.17.0", features = ["sync", "time", "macros", "rt-multi-thread"]}
-
-[features]
-lru = ["dep:lru"]
