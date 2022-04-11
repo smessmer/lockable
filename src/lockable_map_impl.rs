@@ -42,6 +42,15 @@ where
     }
 }
 
+impl<M> Default for LockableMapImpl<M, NoopHooks>
+where
+    M: ArcMutexMapLike,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M, H> LockableMapImpl<M, H>
 where
     M: ArcMutexMapLike,

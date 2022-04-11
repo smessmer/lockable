@@ -10,10 +10,12 @@ pub struct EntryValue<V> {
     pub(super) value: Option<V>,
 }
 
+type Entry<V> = Arc<Mutex<EntryValue<V>>>;
+
 /// [ArcMutexMapLike] needs to be implemented for each kind of map we want to support, e.g.
 /// for [LruCache] and [HashMap]. This is the basis for that map becoming usable in a [LockableMapImpl]
 /// instance.
-pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Arc<Mutex<EntryValue<Self::V>>>)> {
+pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
     // TODO Can we remove the 'static bound from K and V?
     type K: Eq + PartialEq + Hash + Clone + Debug + 'static;
     type V: Debug + 'static;
@@ -22,12 +24,13 @@ pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Arc<Mutex<EntryValue<Se
 
     fn len(&self) -> usize;
 
-    fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>>;
+    fn get_or_insert_none(&mut self, key: &Self::K) -> &Entry<Self::V>;
 
-    fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>>;
+    fn get(&mut self, key: &Self::K) -> Option<&Entry<Self::V>>;
 
-    fn remove(&mut self, key: &Self::K) -> Option<Arc<Mutex<EntryValue<Self::V>>>>;
+    fn remove(&mut self, key: &Self::K) -> Option<Entry<Self::V>>;
 
     // TODO No box dyn
-    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_>;
+    #[allow(clippy::type_complexity)]
+    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Entry<Self::V>)> + '_>;
 }

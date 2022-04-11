@@ -28,7 +28,7 @@ where
     }
 
     fn len(&self) -> usize {
-        self.into_iter().len()
+        self.iter().len()
     }
 
     fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>> {
@@ -321,6 +321,16 @@ where
     #[inline]
     pub fn keys(&self) -> Vec<K> {
         self.map_impl.keys()
+    }
+}
+
+impl<K, V> Default for LockableLruCache<K, V>
+where
+    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+    V: Debug + 'static,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

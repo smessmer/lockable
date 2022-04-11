@@ -16,8 +16,7 @@ impl<T: 'static> LockedMutexGuard<T> {
     pub fn blocking_lock(mutex: Arc<Mutex<T>>) -> Self {
         let mutex_and_guard = OwningHandle::new_with_fn(mutex, |mutex: *const Mutex<T>| {
             let mutex: &Mutex<T> = unsafe { &*mutex };
-            let guard = mutex.blocking_lock();
-            guard
+            mutex.blocking_lock()
         });
         Self { mutex_and_guard }
     }
