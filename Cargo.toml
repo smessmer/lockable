@@ -1,6 +1,7 @@
 [package]
 authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 edition = "2021"
+rust-version = "1.60.0"
 name = "lockable"
 version = "0.0.1"
 readme = "README.md"
