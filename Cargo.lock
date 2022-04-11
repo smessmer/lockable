@@ -66,7 +66,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "lru",
- "owning_ref",
+ "owning_ref_lockable",
  "thiserror",
  "tokio",
 ]
@@ -97,9 +97,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
 
 [[package]]
-name = "owning_ref"
-version = "0.4.1"
-source = "git+https://github.com/smessmer/owning-ref-rs.git?rev=33b9630201751021958405ac956d5f2ea23f4909#33b9630201751021958405ac956d5f2ea23f4909"
+name = "owning_ref_lockable"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6e541805afb3c88b99843162a5cd14aff5db3c50cb7ea6d9a1bad3d3ffacd7b"
 dependencies = [
  "stable_deref_trait",
 ]
