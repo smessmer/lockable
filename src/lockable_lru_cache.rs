@@ -1,4 +1,3 @@
-use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::Borrow;
 use std::fmt::Debug;
@@ -118,6 +117,7 @@ type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 /// ```
 ///
 /// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure there aren't any race conditions when adding or removing entries.
+#[derive(Debug)]
 pub struct LockableLruCache<K, V>
 where
     K: Eq + PartialEq + Hash + Clone + Debug + 'static,
@@ -312,7 +312,7 @@ where
     /// TODO Docs
     /// TODO Test
     #[inline]
-    pub fn into_entries_unordered(self) -> impl Stream<Item = (K, V)> {
+    pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
         self.map_impl.into_entries_unordered()
     }
 

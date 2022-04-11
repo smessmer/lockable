@@ -1,8 +1,4 @@
 use anyhow::Result;
-use futures::{
-    future,
-    stream::{FuturesUnordered, Stream, StreamExt},
-};
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -85,9 +81,19 @@ where
     pub fn blocking_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, H, S> {
         let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
-        // The following blocks until the mutex for this key is acquired.
+        // The following blocks the thread until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::blocking_lock(mutex);
+        GuardImpl::new(this, key, guard)
+    }
+
+    #[inline]
+    pub async fn async_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, H, S> {
+        let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
+        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
+        // The following blocks the task until the mutex for this key is acquired.
+
+        let guard = LockedMutexGuard::async_lock(mutex).await;
         GuardImpl::new(this, key, guard)
     }
 
@@ -118,20 +124,21 @@ where
         std::mem::drop(guard);
 
         // Now the guard is dropped and the lock for this key is unlocked.
-        // If there are any other Self::lock() calls for this key already running and
-        // waiting for the mutex, they will be unblocked now and their guard
-        // will be created.
+        // If there are any other Self::blocking_lock/async_lock/try_lock()
+        // calls for this key already running and/ waiting for the mutex,
+        // they will be unblocked now and their guard will be created.
         // But since we still have the global mutex on self.cache_entries, currently no
-        // thread can newly call Self::lock() and create a clone of our Arc. Similarly,
-        // no other thread can enter Self::unlock() and reduce the strong_count of the Arc.
-        // This means that if Arc::strong_count() == 1, we know that we can clean up
-        // without race conditions.
+        // thread can newly call Self::blocking_lock/async_lock/try_lock() and create a
+        // new clone of our Arc. Similarly, no other thread can enter Self::_unlock()
+        // and reduce the strong_count of the Arc. This means that if
+        // Arc::strong_count() == 1, we know that there is no other thread with access
+        // that could modify strong_count. We can clean up without race conditions.
 
         if Arc::strong_count(mutex) == 1 {
-            // The guard we're about to drop is the last guard for this mutex,
-            // the only other Arc pointing to it is the one in the hashmap.
-            // If it carries a value, keep it, but it doesn't carry a value,
-            // clean up to fulfill the invariant
+            // If the guard we dropped carried a value, keep the entry in the map.
+            // But it doesn't carry a value, clean up since the entry semantically
+            // doesn't exist in the map and was only created to have a place to put
+            // the mutex.
             if !entry_carries_a_value {
                 let remove_result = cache_entries.remove(key);
                 assert!(
@@ -139,17 +146,10 @@ where
                     "We just got this entry above from the hash map, it cannot have vanished since then"
                 );
             }
+        } else {
+            // Another thread was currently waiting in a Self::blocking_lock/async_lock/try_lock call
+            // and will now get the lock. We shouldn't free the entry.
         }
-    }
-
-    #[inline]
-    pub async fn async_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, H, S> {
-        let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
-        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
-        // The following blocks until the mutex for this key is acquired.
-
-        let guard = LockedMutexGuard::async_lock(mutex).await;
-        GuardImpl::new(this, key, guard)
     }
 
     /// TODO Docs
@@ -194,30 +194,24 @@ where
     //     result
     // }
 
-    pub fn into_entries_unordered(self) -> impl Stream<Item = (M::K, M::V)> {
+    pub fn into_entries_unordered(self) -> impl Iterator<Item = (M::K, M::V)> {
         let entries: M = self.cache_entries.into_inner().expect("Lock poisoned");
 
-        // We now have exclusive access to the LruCache object. No other thread or task can call lock() and increase
-        // the refcount for one of the Arcs. They still can have (un-cloneable) Guard instances and those will eventually call
-        // _unlock() on destruction. We just need to wait until the last thread gives up an Arc and then we can remove it from the mutex.
+        // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
+        // GuardImpl for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
+        // indirectly through the Arc but if user code calls this function, it means they had to call Arc::try_unwrap or something similar
+        // which ensures that there are no other threads with access to it.
 
-        let entries: FuturesUnordered<_> = entries
+        entries
             .into_iter()
-            .map(|(key, value)| future::ready((key, value)))
-            .collect();
-        entries.filter_map(|(key, value)| async {
-            while Arc::strong_count(&value) > 1 {
-                // TODO Is there a better alternative that doesn't involve busy waiting?
-                tokio::task::yield_now().await;
-            }
-            // Now we're the last task having a reference to this arc.
-            let value = Arc::try_unwrap(value)
-                .expect("This can't fail since we are the only task having access");
-            let value = value.into_inner();
-
-            // Ignore None entries
-            value.value.map(|value| (key, value))
-        })
+            .filter_map(|(key, value)| {
+                let value = Arc::try_unwrap(value)
+                    .expect("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc.");
+                let value = value.into_inner();
+    
+                // Ignore None entries since they don't actually exist in the map and were only created so we have a place to put the mutex.
+                value.value.map(|value| (key, value))
+            })
     }
 
     #[inline]
