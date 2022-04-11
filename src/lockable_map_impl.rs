@@ -208,7 +208,7 @@ where
                 let value = Arc::try_unwrap(value)
                     .expect("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc.");
                 let value = value.into_inner();
-    
+
                 // Ignore None entries since they don't actually exist in the map and were only created so we have a place to put the mutex.
                 value.value.map(|value| (key, value))
             })

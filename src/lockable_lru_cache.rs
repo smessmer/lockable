@@ -328,7 +328,7 @@ where
 /// This guard is created via [LockableLruCache::blocking_lock], [LockableLruCache::async_lock]
 /// or [LockableLruCache::try_lock] and its lifetime is bound to the lifetime
 /// of the [LockableLruCache].
-/// 
+///
 /// See the documentation of [GuardImpl] for methods.
 pub type LruGuard<'a, K, V> =
     GuardImpl<MapImpl<K, V>, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, NoopHooks>>;
@@ -337,7 +337,7 @@ pub type LruGuard<'a, K, V> =
 /// This guard is created via [LockableLruCache::blocking_lock_owned], [LockableLruCache::async_lock_owned]
 /// or [LockableLruCache::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableLruCache]
 /// within its [Arc].
-/// 
+///
 /// See the documentation of [GuardImpl] for methods.
 pub type LruOwnedGuard<K, V> = GuardImpl<MapImpl<K, V>, NoopHooks, Arc<LockableLruCache<K, V>>>;
 
