@@ -363,8 +363,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::instantiate_lockable_tests;
     use super::LockableHashMap;
+    use crate::instantiate_lockable_tests;
 
     instantiate_lockable_tests!(LockableHashMap);
 }

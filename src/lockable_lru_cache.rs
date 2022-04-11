@@ -366,8 +366,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::instantiate_lockable_tests;
     use super::LockableLruCache;
+    use crate::instantiate_lockable_tests;
 
     instantiate_lockable_tests!(LockableLruCache);
 }
