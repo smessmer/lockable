@@ -3,7 +3,7 @@ authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 edition = "2021"
 rust-version = "1.60.0"
 name = "lockable"
-version = "0.0.1"
+version = "0.0.2"
 readme = "README.md"
 documentation = "https://docs.rs/lockable"
 homepage = "https://github.com/smessmer/lockable"
@@ -13,8 +13,8 @@ keywords = ["concurrency", "thread", "locks", "mutex"]
 categories = ["asynchronous", "concurrency"]
 description = "This library offers hash map and cache data structures where individual entries can be locked"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 anyhow = "^1.0.56"
