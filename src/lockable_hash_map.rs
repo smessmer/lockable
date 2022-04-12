@@ -11,7 +11,9 @@ use super::hooks::NoopHooks;
 use super::lockable_map_impl::LockableMapImpl;
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
-impl<K, V> ArcMutexMapLike for HashMap<K, Arc<Mutex<EntryValue<V>>>>
+type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
+
+impl<K, V> ArcMutexMapLike for MapImpl<K, V>
 where
     K: Eq + PartialEq + Hash + Clone + Debug + 'static,
     V: Debug + 'static,
@@ -45,8 +47,6 @@ where
         Box::new(HashMap::iter(self))
     }
 }
-
-type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 
 /// A threadsafe hash map where individual keys can be locked/unlocked, even if there is no entry for this key in the map.
 /// It initially considers all keys as "unlocked", but they can be locked
@@ -117,7 +117,7 @@ where
     K: Eq + PartialEq + Hash + Clone + Debug + 'static,
     V: Debug + 'static,
 {
-    map_impl: LockableMapImpl<MapImpl<K, V>, NoopHooks>,
+    map_impl: LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
 }
 
 impl<K, V> LockableHashMap<K, V>
@@ -338,7 +338,7 @@ where
 ///
 /// See the documentation of [GuardImpl] for methods.
 pub type HashMapGuard<'a, K, V> =
-    GuardImpl<MapImpl<K, V>, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, NoopHooks>>;
+    GuardImpl<MapImpl<K, V>, V, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>>;
 
 /// A owning guard holding a lock for an entry in a [LockableHashMap].
 /// This guard is created via [LockableHashMap::blocking_lock_owned], [LockableHashMap::async_lock_owned]
@@ -346,17 +346,18 @@ pub type HashMapGuard<'a, K, V> =
 /// within its [Arc].
 ///
 /// See the documentation of [GuardImpl] for methods.
-pub type HashMapOwnedGuard<K, V> = GuardImpl<MapImpl<K, V>, NoopHooks, Arc<LockableHashMap<K, V>>>;
+pub type HashMapOwnedGuard<K, V> =
+    GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, NoopHooks>> for Arc<LockableHashMap<K, V>>
+impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, NoopHooks>> for Arc<LockableHashMap<K, V>>
 where
     K: Eq + PartialEq + Hash + Clone + Debug + 'static,
     V: Debug + 'static,
 {
-    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, NoopHooks> {
+    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, NoopHooks> {
         &self.map_impl
     }
 }

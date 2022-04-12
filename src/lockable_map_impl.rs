@@ -1,6 +1,7 @@
 use anyhow::Result;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::error::TryLockError;
@@ -9,9 +10,10 @@ use super::hooks::{Hooks, NoopHooks};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
-pub struct LockableMapImpl<M, H>
+pub struct LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + From<V>,
     H: Hooks<M::V>,
 {
     // We always use std::sync::Mutex for protecting the whole map since its guards
@@ -30,11 +32,14 @@ where
     cache_entries: std::sync::Mutex<M>,
 
     hooks: H,
+
+    _v: PhantomData<V>,
 }
 
-impl<M> LockableMapImpl<M, NoopHooks>
+impl<M, V> LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + From<V>,
 {
     #[inline]
     pub fn new() -> Self {
@@ -42,18 +47,20 @@ where
     }
 }
 
-impl<M> Default for LockableMapImpl<M, NoopHooks>
+impl<M, V> Default for LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + From<V>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<M, H> LockableMapImpl<M, H>
+impl<M, V, H> LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + From<V>,
     H: Hooks<M::V>,
 {
     #[inline]
@@ -61,6 +68,7 @@ where
         Self {
             cache_entries: std::sync::Mutex::new(M::new()),
             hooks,
+            _v: PhantomData,
         }
     }
 
@@ -87,7 +95,7 @@ where
     }
 
     #[inline]
-    pub fn blocking_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, H, S> {
+    pub fn blocking_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, V, H, S> {
         let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the thread until the mutex for this key is acquired.
@@ -97,7 +105,7 @@ where
     }
 
     #[inline]
-    pub async fn async_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, H, S> {
+    pub async fn async_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, V, H, S> {
         let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the task until the mutex for this key is acquired.
@@ -110,7 +118,7 @@ where
     pub fn try_lock<S: Borrow<Self>>(
         this: S,
         key: M::K,
-    ) -> Result<GuardImpl<M, H, S>, TryLockError> {
+    ) -> Result<GuardImpl<M, V, H, S>, TryLockError> {
         let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
@@ -121,6 +129,18 @@ where
         }?;
         let guard = GuardImpl::new(this, key, guard);
         Ok(guard)
+    }
+
+    // TODO Test
+    pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(this: S) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
+        let cache_entries = this.borrow()._cache_entries();
+        let entries: Vec<_> = cache_entries.iter().filter_map(|(key, mutex)| {
+            match LockedMutexGuard::try_lock(Arc::clone(&mutex)) {
+                Ok(guard) => Some(GuardImpl::new(this.clone(), key.clone(), guard)),
+                Err(_) => None,
+            }
+        }).collect();
+        entries.into_iter()
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: LockedMutexGuard<EntryValue<M::V>>) {
@@ -161,48 +181,6 @@ where
         }
     }
 
-    /// TODO Docs
-    /// TODO Test
-    // pub fn lock_entries_unlocked_for_longer_than(
-    //     &self,
-    //     duration: Duration,
-    // ) -> Vec<Guard<'_, M>> {
-    //     let now = Instant::now();
-    //     let mut result = vec![];
-    //     let cache_entries = self._cache_entries();
-    //     let mut current_entry_timestamp = None;
-    //     // TODO Check that iter().rev() actually starts with the oldest ones and not with the newest once. Otherwise, remove .rev().
-    //     for (key, entry) in cache_entries.iter().rev() {
-    //         if Arc::strong_count(&entry) == 1 {
-    //             // There is currently nobody who has access to this mutex and could lock it.
-    //             // And since we're also blocking the global cache mutex, nobody can get it.
-    //             // We must be able to lock this and we can safely prune it.
-    //             let guard = LockedMutexGuard::try_lock(Arc::clone(&entry)).expect(
-    //                 "We just checked that nobody can lock this. But for some reason it was locked.",
-    //             );
-    //             assert!(
-    //                 guard.last_unlocked >= current_entry_timestamp.unwrap_or(guard.last_unlocked),
-    //                 "Cache order broken - entries don't seem to be in LRU order"
-    //             );
-    //             current_entry_timestamp = Some(guard.last_unlocked);
-
-    //             if now - guard.last_unlocked <= duration {
-    //                 // The next entry is too new to be pruned
-    //                 // TODO Assert that all remaining entries are too new to be pruned, i.e. continue walk through remaining entries and check order
-    //                 return result;
-    //             }
-
-    //             result.push(Guard::new(self, key.clone(), guard));
-    //         } else {
-    //             // Somebody currently has access to this mutex and is likely going to lock it.
-    //             // This means the entry shouldn't be pruned, it will soon get a new timestamp.
-    //         }
-    //     }
-
-    //     // We ran out of entries to check, no entry is too new to be pruned.
-    //     result
-    // }
-
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (M::K, M::V)> {
         let entries: M = self.cache_entries.into_inner().expect("Lock poisoned");
 
@@ -234,9 +212,10 @@ where
     }
 }
 
-impl<M, H> Debug for LockableMapImpl<M, H>
+impl<M, V, H> Debug for LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + From<V>,
     H: Hooks<M::V>,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
