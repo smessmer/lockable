@@ -370,10 +370,7 @@ where
 
     /// TODO Docs
     /// TODO Test
-    pub fn remove_entries_unlocked_for_longer_than(
-        &self,
-        duration: Duration,
-    ) {
+    pub fn remove_entries_unlocked_for_longer_than(&self, duration: Duration) {
         let now = Instant::now();
         for mut entry in LockableMapImpl::lock_all_unlocked(&self.map_impl) {
             if let Some(value) = entry.value_raw() {

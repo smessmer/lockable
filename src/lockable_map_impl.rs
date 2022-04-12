@@ -132,14 +132,19 @@ where
     }
 
     // TODO Test
-    pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(this: S) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
+    pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(
+        this: S,
+    ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();
-        let entries: Vec<_> = cache_entries.iter().filter_map(|(key, mutex)| {
-            match LockedMutexGuard::try_lock(Arc::clone(&mutex)) {
-                Ok(guard) => Some(GuardImpl::new(this.clone(), key.clone(), guard)),
-                Err(_) => None,
-            }
-        }).collect();
+        let entries: Vec<_> = cache_entries
+            .iter()
+            .filter_map(
+                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(&mutex)) {
+                    Ok(guard) => Some(GuardImpl::new(this.clone(), key.clone(), guard)),
+                    Err(_) => None,
+                },
+            )
+            .collect();
         entries.into_iter()
     }
 
