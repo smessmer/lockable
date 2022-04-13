@@ -20,7 +20,7 @@ anyhow = "^1.0.56"
 lru = {version = "^0.7.5", optional = true}
 owning_ref_lockable = "^0.4.2"
 thiserror = "^1.0.30"
-tokio = {version = "^1.17.0", features = ["sync", "rt"]}
+tokio = {version = "^1.17.0", features = ["sync", "time", "rt"]}
 
 [dev-dependencies]
 tokio = {version = "^1.17.0", features = ["sync", "time", "macros", "rt-multi-thread"]}
