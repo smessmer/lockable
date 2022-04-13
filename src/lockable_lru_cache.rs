@@ -362,7 +362,7 @@ where
     }
 
     /// TODO Docs
-    /// TODO Test
+    /// Caveat: Locked keys are listed even if they don't carry a value
     #[inline]
     pub fn keys(&self) -> Vec<K> {
         self.map_impl.keys()
