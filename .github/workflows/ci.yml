@@ -12,7 +12,7 @@ jobs:
     name: Build (ARM, stable, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -27,7 +27,7 @@ jobs:
     name: Build (ARM, stable, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -42,7 +42,7 @@ jobs:
     name: Build (ARM, stable, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -57,7 +57,7 @@ jobs:
     name: Build (ARM, stable, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -72,7 +72,7 @@ jobs:
     name: Test (ARM, stable, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -87,7 +87,7 @@ jobs:
     name: Test (ARM, stable, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -102,7 +102,7 @@ jobs:
     name: Test (ARM, stable, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -117,7 +117,7 @@ jobs:
     name: Test (ARM, stable, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -132,7 +132,7 @@ jobs:
     name: Test (x64, stable, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -144,7 +144,7 @@ jobs:
     name: Test (x64, stable, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -156,7 +156,7 @@ jobs:
     name: Test (x64, stable, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -168,7 +168,7 @@ jobs:
     name: Test (x64, stable, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -180,7 +180,7 @@ jobs:
     name: Build (ARM, nightly, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -195,7 +195,7 @@ jobs:
     name: Build (ARM, nightly, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -210,7 +210,7 @@ jobs:
     name: Build (ARM, nightly, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -225,7 +225,7 @@ jobs:
     name: Build (ARM, nightly, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -240,7 +240,7 @@ jobs:
     name: Test (ARM, nightly, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -255,7 +255,7 @@ jobs:
     name: Test (ARM, nightly, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -270,7 +270,7 @@ jobs:
     name: Test (ARM, nightly, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -285,7 +285,7 @@ jobs:
     name: Test (ARM, nightly, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -300,7 +300,7 @@ jobs:
     name: Test (x64, nightly, release)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -312,7 +312,7 @@ jobs:
     name: Test (x64, nightly, release, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -324,7 +324,7 @@ jobs:
     name: Test (x64, nightly, debug)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -336,7 +336,7 @@ jobs:
     name: Test (x64, nightly, debug, all_features)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -348,7 +348,7 @@ jobs:
     name: Linter (clippy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: rustup component add clippy
       - uses: actions-rs/clippy-check@v1
         with:
@@ -358,7 +358,7 @@ jobs:
     name: Code Formatter (rustfmt)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -371,7 +371,7 @@ jobs:
     name: Sync README.md (cargo sync-readme)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: cargo install cargo-readme
     - run: ./gen_readme.sh
     # Fail job if gen_readme.sh introduced changes. If this fails, then we need to run gen_readme.sh locally and add it to the commit.
@@ -380,7 +380,7 @@ jobs:
     name: Code Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -396,7 +396,7 @@ jobs:
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
       - id: coverage
         uses: actions-rs/grcov@v0.1
-      - uses: codecov/codecov-action@v1
+      - uses: codecov/codecov-action@v3
         with:
           #token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           files: ${{ steps.coverage.outputs.report }}
