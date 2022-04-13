@@ -136,16 +136,16 @@ where
         this: S,
     ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();
-        let entries: Vec<_> = cache_entries
+        cache_entries
             .iter()
             .filter_map(
-                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(&mutex)) {
+                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
                     Ok(guard) => Some(GuardImpl::new(this.clone(), key.clone(), guard)),
                     Err(_) => None,
                 },
             )
-            .collect();
-        entries.into_iter()
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: LockedMutexGuard<EntryValue<M::V>>) {
