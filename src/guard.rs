@@ -55,7 +55,6 @@ where
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
-    /// TODO Test
     /// TODO Docs
     #[inline]
     pub fn key(&self) -> &M::K {
@@ -67,7 +66,6 @@ where
         self._guard().value.as_ref()
     }
 
-    /// TODO Test
     /// TODO Docs
     #[inline]
     pub fn value(&self) -> Option<&V> {
@@ -77,7 +75,6 @@ where
         self.value_raw().map(|v| v.borrow())
     }
 
-    /// TODO Test
     /// TODO Docs
     #[inline]
     pub fn value_mut(&mut self) -> Option<&mut V> {
@@ -87,7 +84,6 @@ where
         self._guard_mut().value.as_mut().map(|v| v.borrow_mut())
     }
 
-    /// TODO Test
     /// TODO Docs
     #[inline]
     pub fn remove(&mut self) -> Option<M::V> {
@@ -95,7 +91,6 @@ where
         self._guard_mut().value.take()
     }
 
-    /// TODO Test
     /// TODO Docs
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<M::V> {

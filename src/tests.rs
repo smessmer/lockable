@@ -165,6 +165,8 @@ macro_rules! instantiate_lockable_tests {
         mod simple {
             use super::*;
 
+            // TODO Here and below, for each test we have several subtests with different ways to lock keys. Can we deduplicate that logic?
+
             #[tokio::test]
             async fn async_lock() {
                 let pool = $lockable_type::<isize, String>::new();
@@ -284,195 +286,577 @@ macro_rules! instantiate_lockable_tests {
             }
         }
 
-        mod adding_cache_entries {
+        mod guard {
             use super::*;
 
-            #[tokio::test]
-            async fn async_lock() {
-                let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.async_lock(4).await;
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.async_lock(4).await.value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
+            mod insert {
+                use super::*;
+
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock(4).await;
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.async_lock(4).await.value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
+
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock_owned(4).await;
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.async_lock_owned(4).await.value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock(4);
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.blocking_lock(4).value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock_owned(4);
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.blocking_lock_owned(4).value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock(4).unwrap();
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.try_lock(4).unwrap().value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.try_lock_owned(4).unwrap().value(),
+                        Some(&String::from("Cache Entry Value"))
+                    );
+                }
             }
 
-            #[tokio::test]
-            async fn async_lock_owned() {
-                let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.async_lock_owned(4).await;
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.async_lock_owned(4).await.value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
+            mod remove {
+                use super::*;
+
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.async_lock(4)
+                        .await
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock(4).await;
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock(4).await.value(), None);
+                }
+
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.async_lock_owned(4)
+                        .await
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock_owned(4).await;
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock_owned(4).await.value(), None);
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.blocking_lock(4)
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock(4);
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock(4).value(), None);
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.blocking_lock_owned(4)
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock_owned(4);
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock_owned(4).value(), None);
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.try_lock(4)
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock(4).unwrap();
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock(4).unwrap().value(), None);
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.try_lock_owned(4)
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    guard.remove();
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock_owned(4).unwrap().value(), None);
+                }
             }
 
-            #[test]
-            fn blocking_lock() {
-                let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.blocking_lock(4);
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.blocking_lock(4).value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
+            mod value_mut {
+                use super::*;
+
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock(4).await;
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.async_lock(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.async_lock(4).await.value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
+
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock_owned(4).await;
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.async_lock_owned(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.async_lock_owned(4).await.value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock(4);
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.blocking_lock(4).value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.blocking_lock(4).value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock_owned(4);
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.blocking_lock_owned(4).value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.blocking_lock_owned(4).value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock(4).unwrap();
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.try_lock(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.try_lock(4).unwrap().value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    guard.insert(String::from("Cache Entry Value"));
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    std::mem::drop(guard);
+                    *pool.try_lock_owned(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(
+                        pool.try_lock_owned(4).unwrap().value(),
+                        Some(&String::from("New Cache Entry Value"))
+                    );
+                }
             }
 
-            #[test]
-            fn blocking_lock_owned() {
-                let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.blocking_lock_owned(4);
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.blocking_lock_owned(4).value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
-            }
+            mod key {
+                use super::*;
 
-            #[test]
-            fn try_lock() {
-                let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.try_lock(4).unwrap();
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.try_lock(4).unwrap().value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
-            }
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock(4).await;
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.async_lock(4).await.key());
+                }
 
-            #[test]
-            fn try_lock_owned() {
-                let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(0, pool.num_entries_or_locked());
-                let mut guard = pool.try_lock_owned(4).unwrap();
-                guard.insert(String::from("Cache Entry Value"));
-                assert_eq!(1, pool.num_entries_or_locked());
-                std::mem::drop(guard);
-                assert_eq!(1, pool.num_entries_or_locked());
-                assert_eq!(
-                    pool.try_lock_owned(4).unwrap().value(),
-                    Some(&String::from("Cache Entry Value"))
-                );
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock_owned(4).await;
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.async_lock_owned(4).await.key());
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock(4);
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.blocking_lock(4).key());
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock_owned(4);
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.blocking_lock_owned(4).key());
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock(4).unwrap();
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.try_lock(4).unwrap().key());
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    assert_eq!(4, *guard.key());
+                    guard.insert(String::from("Cache Entry Value"));
+                    std::mem::drop(guard);
+                    assert_eq!(4, *pool.try_lock_owned(4).unwrap().key());
+                }
             }
         }
 
-        mod removing_cache_entries {
+        mod keys {
             use super::*;
 
             #[tokio::test]
             async fn async_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                pool.async_lock(4)
-                    .await
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.async_lock(4).await;
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.async_lock(4).await;
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.async_lock(4).await;
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.async_lock(4).await.value(), None);
+                // Add multiple keys
+                pool.async_lock(4).await.insert(String::from("Content"));
+                pool.async_lock(5).await.insert(String::from("Content"));
+                pool.async_lock(6).await.insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
 
             #[tokio::test]
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.async_lock_owned(4)
-                    .await
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.async_lock_owned(4).await;
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.async_lock_owned(4).await;
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.async_lock_owned(4).await;
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.async_lock_owned(4).await.value(), None);
+                // Add multiple keys
+                pool.async_lock_owned(4).await.insert(String::from("Content"));
+                pool.async_lock_owned(5).await.insert(String::from("Content"));
+                pool.async_lock_owned(6).await.insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
 
             #[test]
             fn blocking_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                pool.blocking_lock(4)
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.blocking_lock(4);
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.blocking_lock(4);
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.blocking_lock(4);
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.blocking_lock(4).value(), None);
+                // Add multiple keys
+                pool.blocking_lock(4).insert(String::from("Content"));
+                pool.blocking_lock(5).insert(String::from("Content"));
+                pool.blocking_lock(6).insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
 
             #[test]
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.blocking_lock_owned(4)
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.blocking_lock_owned(4);
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.blocking_lock_owned(4);
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.blocking_lock_owned(4);
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.blocking_lock_owned(4).value(), None);
+                // Add multiple keys
+                pool.blocking_lock_owned(4).insert(String::from("Content"));
+                pool.blocking_lock_owned(5).insert(String::from("Content"));
+                pool.blocking_lock_owned(6).insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
 
             #[test]
             fn try_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                pool.try_lock(4)
-                    .unwrap()
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.try_lock(4).unwrap();
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.try_lock(4).unwrap();
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.try_lock(4).unwrap();
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.try_lock(4).unwrap().value(), None);
+                // Add multiple keys
+                pool.try_lock(4).unwrap().insert(String::from("Content"));
+                pool.try_lock(5).unwrap().insert(String::from("Content"));
+                pool.try_lock(6).unwrap().insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
 
             #[test]
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.try_lock_owned(4)
-                    .unwrap()
-                    .insert(String::from("Cache Entry Value"));
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(1, pool.num_entries_or_locked());
+                // Locking lists key, unlocking unlists key
+                let guard = pool.try_lock_owned(4).unwrap();
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
+
+                // If entry is inserted, it remains listed after unlocking
+                let mut guard = pool.try_lock_owned(4).unwrap();
+                guard.insert(String::from("Value"));
+                assert_eq!(vec![4], pool.keys());
+                std::mem::drop(guard);
+                assert_eq!(vec![4], pool.keys());
+
+                // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.try_lock_owned(4).unwrap();
                 guard.remove();
+                assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
+                assert_eq!(Vec::<isize>::new(), pool.keys());
 
-                assert_eq!(0, pool.num_entries_or_locked());
-                assert_eq!(pool.try_lock_owned(4).unwrap().value(), None);
+                // Add multiple keys
+                pool.try_lock_owned(4).unwrap().insert(String::from("Content"));
+                pool.try_lock_owned(5).unwrap().insert(String::from("Content"));
+                pool.try_lock_owned(6).unwrap().insert(String::from("Content"));
+                let mut keys = pool.keys();
+                keys.sort();
+                assert_eq!(vec![4, 5, 6], keys);
             }
         }
 
