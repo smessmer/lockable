@@ -2,6 +2,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
+use super::error::TryInsertError;
 use super::hooks::Hooks;
 use super::lockable_map_impl::LockableMapImpl;
 use super::map_like::{ArcMutexMapLike, EntryValue};
@@ -95,6 +96,45 @@ where
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<M::V> {
         self._guard_mut().value.replace(value.into())
+    }
+
+    /// TODO Docs
+    /// TODO Test
+    #[inline]
+    pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
+        let guard = self._guard_mut();
+        if guard.value.is_none() {
+            guard.value = Some(value.into());
+            Ok(&mut *guard
+                .value
+                .as_mut()
+                .expect("We just created this item")
+                .borrow_mut())
+        } else {
+            Err(TryInsertError::AlreadyExists { value })
+        }
+    }
+
+    /// TODO Docs
+    /// TODO Test
+    #[inline]
+    pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
+        let guard = self._guard_mut();
+        if guard.value.is_none() {
+            guard.value = Some(value_fn().into());
+        }
+        &mut *guard
+            .value
+            .as_mut()
+            .expect("We just created this item if it didn't already exist")
+            .borrow_mut()
+    }
+
+    /// TODO Docs
+    /// TODO Test
+    #[inline]
+    pub fn value_or_insert(&mut self, value: V) -> &mut V {
+        self.value_or_insert_with(move || value)
     }
 }
 
