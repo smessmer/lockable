@@ -15,7 +15,7 @@ pub trait FromInto<V> {
     fn fi_into(self) -> V;
 }
 
-impl <V> FromInto<V> for V {
+impl<V> FromInto<V> for V {
     fn fi_from(v: V) -> V {
         v
     }
