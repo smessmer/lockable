@@ -373,15 +373,18 @@ where
 
     /// TODO Docs
     /// TODO Test
-    pub fn remove_entries_unlocked_for_longer_than(&self, duration: Duration) {
+    pub fn lock_entries_unlocked_for_longer_than(
+        &self,
+        duration: Duration,
+    ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
         let now = Instant::now();
-        for mut entry in LockableMapImpl::lock_all_unlocked(&self.map_impl) {
-            if let Some(value) = entry.value_raw() {
-                if value.last_unlocked + duration <= now {
-                    entry.remove();
-                }
+        LockableMapImpl::lock_all_unlocked(&self.map_impl).filter(move |entry| {
+            if let Some(entry) = entry.value_raw() {
+                entry.last_unlocked + duration <= now
+            } else {
+                false
             }
-        }
+        })
     }
 }
 
