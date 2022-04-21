@@ -39,6 +39,7 @@ impl<T: 'static> LockedMutexGuard<T> {
         Self { mutex_and_guard }
     }
 
+    /// TODO Documentation
     pub fn try_lock(mutex: Arc<Mutex<T>>) -> Result<Self, TryLockError> {
         let mutex_and_guard = OwningHandle::try_new(mutex, |mutex: *const Mutex<T>| {
             let mutex: &Mutex<T> = unsafe { &*mutex };

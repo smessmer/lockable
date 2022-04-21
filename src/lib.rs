@@ -16,6 +16,7 @@ mod lockable_hash_map;
 #[cfg(feature = "lru")]
 mod lockable_lru_cache;
 
+pub use utils::locked_mutex_guard::LockedMutexGuard;
 pub use error::TryLockError;
 pub use guard::GuardImpl;
 pub use lockable_hash_map::{HashMapGuard, HashMapOwnedGuard, LockableHashMap};
