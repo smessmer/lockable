@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use super::error::TryInsertError;
 use super::hooks::Hooks;
-use super::lockable_map_impl::LockableMapImpl;
+use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
@@ -14,7 +14,7 @@ pub struct GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     pool: P,
@@ -29,7 +29,7 @@ impl<'a, M, V, H, P> GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     pub(super) fn new(pool: P, key: M::K, guard: LockedMutexGuard<EntryValue<M::V>>) -> Self {
@@ -86,16 +86,20 @@ where
     }
 
     /// TODO Docs
+    /// TODO Test return value
     #[inline]
-    pub fn remove(&mut self) -> Option<M::V> {
+    pub fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it
-        self._guard_mut().value.take()
+        let removed_value = self._guard_mut().value.take();
+        removed_value.map(|v| v.fi_into())
     }
 
     /// TODO Docs
+    /// TODO Test return value
     #[inline]
-    pub fn insert(&mut self, value: V) -> Option<M::V> {
-        self._guard_mut().value.replace(value.into())
+    pub fn insert(&mut self, value: V) -> Option<V> {
+        let old_value = self._guard_mut().value.replace(M::V::fi_from(value));
+        old_value.map(|v| v.fi_into())
     }
 
     /// TODO Docs
@@ -104,7 +108,7 @@ where
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            guard.value = Some(value.into());
+            guard.value = Some(M::V::fi_from(value));
             Ok(&mut *guard
                 .value
                 .as_mut()
@@ -121,7 +125,7 @@ where
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            guard.value = Some(value_fn().into());
+            guard.value = Some(M::V::fi_from(value_fn()));
         }
         &mut *guard
             .value
@@ -142,7 +146,7 @@ impl<M, V, H, P> Drop for GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn drop(&mut self) {
@@ -158,7 +162,7 @@ impl<M, V, H, P> Debug for GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

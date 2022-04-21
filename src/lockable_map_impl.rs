@@ -10,10 +10,25 @@ use super::hooks::{Hooks, NoopHooks};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
+pub trait FromInto<V> {
+    fn fi_from(v: V) -> Self;
+    fn fi_into(self) -> V;
+}
+
+impl <V> FromInto<V> for V {
+    fn fi_from(v: V) -> V {
+        v
+    }
+
+    fn fi_into(self) -> V {
+        self
+    }
+}
+
 pub struct LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     H: Hooks<M::V>,
 {
     // We always use std::sync::Mutex for protecting the whole map since its guards
@@ -39,7 +54,7 @@ where
 impl<M, V> LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
 {
     #[inline]
     pub fn new() -> Self {
@@ -50,7 +65,7 @@ where
 impl<M, V> Default for LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
 {
     fn default() -> Self {
         Self::new()
@@ -60,7 +75,7 @@ where
 impl<M, V, H> LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     H: Hooks<M::V>,
 {
     #[inline]
@@ -221,7 +236,7 @@ where
 impl<M, V, H> Debug for LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + From<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     H: Hooks<M::V>,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

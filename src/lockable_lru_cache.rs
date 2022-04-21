@@ -9,7 +9,7 @@ use tokio::time::{Duration, Instant};
 use super::error::TryLockError;
 use super::guard::GuardImpl;
 use super::hooks::Hooks;
-use super::lockable_map_impl::LockableMapImpl;
+use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>>>>>;
@@ -74,15 +74,18 @@ impl<V> BorrowMut<V> for CacheEntry<V> {
     }
 }
 
-// From is used to allow GuardImpl to offer an API to insert V values while
+// FromInto is used to allow GuardImpl to offer an API to insert V values while
 // the cache actually stores values as CacheEntry<V>
-impl<V> From<V> for CacheEntry<V> {
-    fn from(value: V) -> CacheEntry<V> {
+impl<V> FromInto<V> for CacheEntry<V> {
+    fn fi_from(value: V) -> CacheEntry<V> {
         CacheEntry {
             value,
             // last_unlocked is now since the entry was just freshly inserted
             last_unlocked: Instant::now(),
         }
+    }
+    fn fi_into(self) -> V {
+        self.value
     }
 }
 
