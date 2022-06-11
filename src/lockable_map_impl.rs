@@ -1,9 +1,9 @@
 use anyhow::Result;
+use futures::stream::{FuturesUnordered, StreamExt};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use futures::stream::{FuturesUnordered, StreamExt};
 
 use super::error::TryLockError;
 use super::guard::GuardImpl;
@@ -171,12 +171,10 @@ where
         let cache_entries = this.borrow()._cache_entries();
         let cache_entries: FuturesUnordered<_> = cache_entries
             .iter()
-            .map(
-                |(key, mutex)| async {
-                    let guard = LockedMutexGuard::async_lock(Arc::clone(mutex)).await;
-                    GuardImpl::new(this.clone(), key.clone(), guard)
-                },
-            )
+            .map(|(key, mutex)| async {
+                let guard = LockedMutexGuard::async_lock(Arc::clone(mutex)).await;
+                GuardImpl::new(this.clone(), key.clone(), guard)
+            })
             .collect();
         cache_entries.collect::<Vec<_>>().await.into_iter()
     }

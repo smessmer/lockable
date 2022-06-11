@@ -389,9 +389,7 @@ where
 
     /// TODO Docs. Note that it locks and returns all currently existing entries but is async, so new entries could be added concurrently and those entries may or may not be returned.
     /// TODO Test
-    pub async fn lock_all_entries(
-        &self,
-    ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
+    pub async fn lock_all_entries(&self) -> impl Iterator<Item = LruGuard<'_, K, V>> {
         LockableMapImpl::lock_all(&self.map_impl).await
     }
 }
