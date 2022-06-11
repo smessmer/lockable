@@ -1,5 +1,5 @@
 use anyhow::Result;
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::stream::{FuturesUnordered, Stream};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -167,16 +167,21 @@ where
     // TODO Test
     pub async fn lock_all<S: Borrow<Self> + Clone>(
         this: S,
-    ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
+    ) -> impl Stream<Item = GuardImpl<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();
         let cache_entries: FuturesUnordered<_> = cache_entries
             .iter()
-            .map(|(key, mutex)| async {
-                let guard = LockedMutexGuard::async_lock(Arc::clone(mutex)).await;
-                GuardImpl::new(this.clone(), key.clone(), guard)
+            .map(|(key, mutex)| {
+                let this = this.clone();
+                let key = key.clone();
+                let mutex = Arc::clone(mutex);
+                async move {
+                    let guard = LockedMutexGuard::async_lock(mutex).await;
+                    GuardImpl::new(this, key, guard)
+                }
             })
             .collect();
-        cache_entries.collect::<Vec<_>>().await.into_iter()
+        cache_entries
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: LockedMutexGuard<EntryValue<M::V>>) {
