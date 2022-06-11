@@ -390,7 +390,9 @@ where
 
     /// TODO Docs. Note that it locks and returns all currently existing entries but is async, so new entries could be added concurrently and those entries may or may not be returned.
     /// TODO Test
-    pub async fn lock_all_entries_owned(self: &Arc<Self>) -> impl Stream<Item = LruOwnedGuard<K, V>> {
+    pub async fn lock_all_entries_owned(
+        self: &Arc<Self>,
+    ) -> impl Stream<Item = LruOwnedGuard<K, V>> {
         LockableMapImpl::lock_all(Arc::clone(self)).await
     }
 }
