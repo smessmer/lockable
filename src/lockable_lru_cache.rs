@@ -374,7 +374,7 @@ where
 
     /// TODO Docs
     /// TODO Test
-    pub fn lock_entries_unlocked_for_longer_than(
+    pub fn lock_entries_unlocked_for_at_least(
         &self,
         duration: Duration,
     ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
