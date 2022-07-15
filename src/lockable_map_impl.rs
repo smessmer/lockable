@@ -3,7 +3,10 @@ use futures::stream::{FuturesUnordered, Stream};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use super::error::TryLockError;
 use super::guard::GuardImpl;
@@ -47,6 +50,9 @@ where
     //   while the entry is locked.
     cache_entries: std::sync::Mutex<M>,
 
+    /// Counts the number of currently locked entries.
+    num_locked: AtomicUsize,
+
     hooks: H,
 
     _v: PhantomData<V>,
@@ -83,6 +89,7 @@ where
     pub fn new_with_hooks(hooks: H) -> Self {
         Self {
             cache_entries: std::sync::Mutex::new(M::new()),
+            num_locked: 0.into(),
             hooks,
             _v: PhantomData,
         }
@@ -91,6 +98,26 @@ where
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self._cache_entries().len()
+    }
+
+    #[inline]
+    pub fn num_locked(&self) -> usize {
+        self.num_locked.load(Ordering::SeqCst)
+    }
+
+    #[inline]
+    pub fn num_unlocked(&self) -> usize {
+        let entries = self._cache_entries();
+        // We keep `entries` as a lock here so that no other task can come, call _unlock() and decrease entries.len().
+        // There is no other way to decrease entries.len(). Other tasks can come in and increase self.num_locked()
+        // while we're in here, but they can never increase it to larger than entries.len().
+        assert!(
+            entries.len() >= self.num_locked(),
+            "LockableMapImpl::num_unlocked: {} < {}",
+            entries.len(),
+            self.num_locked()
+        );
+        entries.len() - self.num_locked()
     }
 
     #[inline]
@@ -117,6 +144,7 @@ where
         // The following blocks the thread until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::blocking_lock(mutex);
+        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         GuardImpl::new(this, key, guard)
     }
 
@@ -127,6 +155,7 @@ where
         // The following blocks the task until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::async_lock(mutex).await;
+        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         GuardImpl::new(this, key, guard)
     }
 
@@ -143,6 +172,7 @@ where
             Ok(guard) => Ok(guard),
             Err(_) => Err(TryLockError::WouldBlock),
         }?;
+        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         let guard = GuardImpl::new(this, key, guard);
         Ok(guard)
     }
@@ -156,7 +186,10 @@ where
             .iter()
             .filter_map(
                 |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
-                    Ok(guard) => Some(GuardImpl::new(this.clone(), key.clone(), guard)),
+                    Ok(guard) => {
+                        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
+                        Some(GuardImpl::new(this.clone(), key.clone(), guard))
+                    }
                     Err(_) => None,
                 },
             )
@@ -192,6 +225,9 @@ where
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
         std::mem::drop(guard);
+
+        let prev_value = self.num_locked.fetch_sub(1, Ordering::SeqCst);
+        assert!(prev_value != 0);
 
         // Now the guard is dropped and the lock for this key is unlocked.
         // If there are any other Self::blocking_lock/async_lock/try_lock()

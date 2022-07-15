@@ -194,6 +194,20 @@ where
         self.map_impl.num_entries_or_locked()
     }
 
+    /// TODO Docs
+    /// TODO Tests
+    #[inline]
+    pub fn num_locked(&self) -> usize {
+        self.map_impl.num_locked()
+    }
+
+    /// TODO Docs
+    /// TODO Tests
+    #[inline]
+    pub fn num_unlocked(&self) -> usize {
+        self.map_impl.num_unlocked()
+    }
+
     /// Lock a key and return a guard with any potential cache entry for that key.
     /// Any changes to that entry will be persisted in the cache.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
