@@ -48,7 +48,9 @@ where
     // - The timestamps in EntryValue will follow the same order as the LRU order of the map,
     //   with an exception for currently locked entries that may be temporarily out of order
     //   while the entry is locked.
-    cache_entries: std::sync::Mutex<M>,
+    //
+    // cache_entries is always Some unless we're currently destructing the object
+    cache_entries: Option<std::sync::Mutex<M>>,
 
     /// Counts the number of currently locked entries.
     num_locked: AtomicUsize,
@@ -88,7 +90,7 @@ where
     #[inline]
     pub fn new_with_hooks(hooks: H) -> Self {
         Self {
-            cache_entries: std::sync::Mutex::new(M::new()),
+            cache_entries: Some(std::sync::Mutex::new(M::new())),
             num_locked: 0.into(),
             hooks,
             _v: PhantomData,
@@ -123,6 +125,8 @@ where
     #[inline]
     fn _cache_entries(&self) -> std::sync::MutexGuard<'_, M> {
         self.cache_entries
+            .as_ref()
+            .expect("Object is currently being destructed")
             .lock()
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
     }
@@ -210,6 +214,7 @@ where
                 let mutex = Arc::clone(mutex);
                 async move {
                     let guard = LockedMutexGuard::async_lock(mutex).await;
+                    this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
                     GuardImpl::new(this, key, guard)
                 }
             })
@@ -227,7 +232,10 @@ where
         std::mem::drop(guard);
 
         let prev_value = self.num_locked.fetch_sub(1, Ordering::SeqCst);
-        assert!(prev_value != 0);
+        assert!(
+            prev_value > 0,
+            "Somehow we returned a guard that was created without incrementing num_locked."
+        );
 
         // Now the guard is dropped and the lock for this key is unlocked.
         // If there are any other Self::blocking_lock/async_lock/try_lock()
@@ -258,8 +266,13 @@ where
         }
     }
 
-    pub fn into_entries_unordered(self) -> impl Iterator<Item = (M::K, M::V)> {
-        let entries: M = self.cache_entries.into_inner().expect("Lock poisoned");
+    pub fn into_entries_unordered(mut self) -> impl Iterator<Item = (M::K, M::V)> {
+        let entries: M = self
+            .cache_entries
+            .take()
+            .expect("Object is already being destructed")
+            .into_inner()
+            .expect("Lock poisoned");
 
         // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
         // GuardImpl for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
@@ -298,5 +311,20 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("LockableCache").finish()
+    }
+}
+
+impl<M, V, H> Drop for LockableMapImpl<M, V, H>
+where
+    M: ArcMutexMapLike,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    H: Hooks<M::V>,
+{
+    fn drop(&mut self) {
+        assert_eq!(
+            0,
+            self.num_locked.load(Ordering::SeqCst),
+            "Miscalculation in num_locked",
+        );
     }
 }
