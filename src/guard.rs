@@ -140,6 +140,13 @@ where
     pub fn value_or_insert(&mut self, value: V) -> &mut V {
         self.value_or_insert_with(move || value)
     }
+
+    /// TODO Docs
+    /// TODO Test
+    #[inline]
+    pub fn pool(&self) -> &P {
+        &self.pool
+    }
 }
 
 impl<M, V, H, P> Drop for GuardImpl<M, V, H, P>
