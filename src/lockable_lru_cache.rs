@@ -50,7 +50,7 @@ where
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_> {
-        Box::new(LruCache::iter(self))
+        Box::new(LruCache::iter(self).rev())
     }
 }
 
@@ -392,6 +392,7 @@ where
         &self,
         duration: Duration,
     ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
+        // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
         let now = Instant::now();
         LockableMapImpl::lock_all_unlocked(&self.map_impl).filter(move |entry| {
             if let Some(entry) = entry.value_raw() {
@@ -406,6 +407,31 @@ where
     /// TODO Test
     pub async fn lock_all_entries(&self) -> impl Stream<Item = LruGuard<'_, K, V>> {
         LockableMapImpl::lock_all(&self.map_impl).await
+    }
+
+    /// If there are more than `num_remaining_unlocked` unlocked keys,
+    /// lock all unlocked keys except the `num_remaining_unlocked` newest
+    /// ones (in LRU order)
+    /// This can, for example, be used to enforce a capacity limit on
+    /// the number of unlocked entries in the cache by locking and then
+    /// deleting overlimit entries.
+    pub fn lock_all_except_n_newest_unlocked(
+        &self,
+        num_remaining_unlocked: usize,
+    ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
+        let mut prev_entry_last_unlocked = None;
+        LockableMapImpl::lock_all_except_n_first_unlocked(&self.map_impl, num_remaining_unlocked)
+            .map(move |entry| {
+                let entry_last_unlocked = entry.value_raw().unwrap().last_unlocked;
+                if let Some(prev_entry_last_unlocked) = prev_entry_last_unlocked {
+                    assert!(
+                        prev_entry_last_unlocked <= entry_last_unlocked,
+                        "LRU order broken",
+                    );
+                }
+                prev_entry_last_unlocked = Some(entry_last_unlocked);
+                entry
+            })
     }
 }
 
@@ -458,6 +484,31 @@ where
 mod tests {
     use super::LockableLruCache;
     use crate::instantiate_lockable_tests;
+    use std::fmt::Debug;
+    use tokio::time::sleep;
 
     instantiate_lockable_tests!(LockableLruCache);
+
+    pub fn assert_unordered_vec_eq<T: Eq + Ord + Debug>(mut lhs: Vec<T>, mut rhs: Vec<T>) {
+        lhs.sort();
+        rhs.sort();
+        assert_eq!(lhs, rhs);
+    }
+
+    #[tokio::test]
+    async fn test_lru_order_in_lock_all_except_n_newest_unlocked() {
+        let obj = LockableLruCache::<i64, i64>::new();
+        for i in 1..10 {
+            obj.async_lock(i).await.try_insert(i).unwrap();
+            sleep(Duration::from_millis(1)).await;
+        }
+
+        let locked: Vec<i64> = obj
+            .lock_all_except_n_newest_unlocked(5)
+            .map(|guard| *guard.key())
+            .collect();
+        assert_unordered_vec_eq(vec![1, 2, 3, 4], locked);
+    }
+
+    // TODO More tests for lock_all_except_n_newest_unlocked
 }

@@ -110,6 +110,10 @@ where
     #[inline]
     pub fn num_unlocked(&self) -> usize {
         let entries = self._cache_entries();
+        self._num_unlocked(&entries)
+    }
+
+    fn _num_unlocked(&self, entries: &std::sync::MutexGuard<M>) -> usize {
         // We keep `entries` as a lock here so that no other task can come, call _unlock() and decrease entries.len().
         // There is no other way to decrease entries.len(). Other tasks can come in and increase self.num_locked()
         // while we're in here, but they can never increase it to larger than entries.len().
@@ -122,7 +126,6 @@ where
         entries.len() - self.num_locked()
     }
 
-    #[inline]
     fn _cache_entries(&self) -> std::sync::MutexGuard<'_, M> {
         self.cache_entries
             .as_ref()
@@ -131,7 +134,6 @@ where
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
     }
 
-    #[inline]
     fn _load_or_insert_mutex_for_key(
         &self,
         key: &M::K,
@@ -141,6 +143,15 @@ where
         Arc::clone(entry)
     }
 
+    fn _make_guard<S: Borrow<Self>>(
+        this: S,
+        key: M::K,
+        guard: LockedMutexGuard<EntryValue<M::V>>,
+    ) -> GuardImpl<M, V, H, S> {
+        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
+        GuardImpl::new(this, key.clone(), guard)
+    }
+
     #[inline]
     pub fn blocking_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, V, H, S> {
         let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
@@ -148,8 +159,7 @@ where
         // The following blocks the thread until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::blocking_lock(mutex);
-        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-        GuardImpl::new(this, key, guard)
+        Self::_make_guard(this, key, guard)
     }
 
     #[inline]
@@ -159,8 +169,7 @@ where
         // The following blocks the task until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::async_lock(mutex).await;
-        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-        GuardImpl::new(this, key, guard)
+        Self::_make_guard(this, key, guard)
     }
 
     #[inline]
@@ -176,9 +185,7 @@ where
             Ok(guard) => Ok(guard),
             Err(_) => Err(TryLockError::WouldBlock),
         }?;
-        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-        let guard = GuardImpl::new(this, key, guard);
-        Ok(guard)
+        Ok(Self::_make_guard(this, key, guard))
     }
 
     // TODO Test
@@ -190,10 +197,7 @@ where
             .iter()
             .filter_map(
                 |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
-                    Ok(guard) => {
-                        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-                        Some(GuardImpl::new(this.clone(), key.clone(), guard))
-                    }
+                    Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                     Err(_) => None,
                 },
             )
@@ -214,8 +218,7 @@ where
                 let mutex = Arc::clone(mutex);
                 async move {
                     let guard = LockedMutexGuard::async_lock(mutex).await;
-                    this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-                    GuardImpl::new(this, key, guard)
+                    Self::_make_guard(this, key, guard)
                 }
             })
             .collect();
@@ -300,6 +303,33 @@ where
             .map(|(key, _value)| key)
             .cloned()
             .collect()
+    }
+
+    /// If there are more than `num_remaining_unlocked` unlocked keys,
+    /// lock all except the `num_remaining_unlocked` last ones (in iteration order).
+    /// This can, for example, be used to enforce a capacity limit on
+    /// the number of unlocked entries in the cache by locking and then
+    /// deleting overlimit entries.
+    /// TODO Test
+    pub fn lock_all_except_n_first_unlocked<S: Borrow<Self> + Clone>(
+        this: S,
+        num_remaining_unlocked: usize,
+    ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
+        let this_borrow = this.borrow();
+        let cache_entries = this_borrow._cache_entries();
+        let num_unlocked = this_borrow._num_unlocked(&cache_entries);
+        let num_overlimit = num_unlocked.saturating_sub(num_remaining_unlocked);
+        cache_entries
+            .iter()
+            .filter_map(
+                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+                    Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
+                    Err(_) => None,
+                },
+            )
+            .take(num_overlimit)
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 
