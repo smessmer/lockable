@@ -415,12 +415,12 @@ where
     /// This can, for example, be used to enforce a capacity limit on
     /// the number of unlocked entries in the cache by locking and then
     /// deleting overlimit entries.
-    pub fn lock_all_except_n_newest_unlocked(
+    pub fn lock_all_unlocked_except_n_newest(
         &self,
         num_remaining_unlocked: usize,
     ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
         let mut prev_entry_last_unlocked = None;
-        LockableMapImpl::lock_all_except_n_first_unlocked(&self.map_impl, num_remaining_unlocked)
+        LockableMapImpl::lock_all_unlocked_except_n_first(&self.map_impl, num_remaining_unlocked)
             .map(move |entry| {
                 let entry_last_unlocked = entry.value_raw().unwrap().last_unlocked;
                 if let Some(prev_entry_last_unlocked) = prev_entry_last_unlocked {
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_lru_order_in_lock_all_except_n_newest_unlocked() {
+    async fn test_lru_order_in_lock_all_unlocked_except_n_newest() {
         let obj = LockableLruCache::<i64, i64>::new();
         for i in 1..10 {
             obj.async_lock(i).await.try_insert(i).unwrap();
@@ -504,7 +504,7 @@ mod tests {
         }
 
         let locked: Vec<i64> = obj
-            .lock_all_except_n_newest_unlocked(5)
+            .lock_all_unlocked_except_n_newest(5)
             .map(|guard| *guard.key())
             .collect();
         assert_unordered_vec_eq(vec![1, 2, 3, 4], locked);

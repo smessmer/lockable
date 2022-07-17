@@ -311,7 +311,7 @@ where
     /// the number of unlocked entries in the cache by locking and then
     /// deleting overlimit entries.
     /// TODO Test
-    pub fn lock_all_except_n_first_unlocked<S: Borrow<Self> + Clone>(
+    pub fn lock_all_unlocked_except_n_first<S: Borrow<Self> + Clone>(
         this: S,
         num_remaining_unlocked: usize,
     ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
