@@ -351,10 +351,16 @@ where
     H: Hooks<M::V>,
 {
     fn drop(&mut self) {
-        assert_eq!(
-            0,
-            self.num_locked.load(Ordering::SeqCst),
-            "Miscalculation in num_locked",
-        );
+        let num_locked = self.num_locked.load(Ordering::SeqCst);
+        if 0 != num_locked {
+            if std::thread::panicking() {
+                // We're already panicking, double panic wouldn't show a good error message anyways. Let's just log instead.
+                // A common scenario for this to happen is a failing test case.
+                log::error!("Miscalculation in num_locked: {}", num_locked);
+                eprintln!("Miscalculation in num_locked: {}", num_locked);
+            } else {
+                panic!("Miscalculation in num_locked: {}", num_locked);
+            }
+        }
     }
 }
