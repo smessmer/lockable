@@ -1,15 +1,17 @@
+use anyhow::Result;
 use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
+use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
-use super::error::TryLockError;
 use super::guard::GuardImpl;
 use super::hooks::Hooks;
+use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
@@ -50,7 +52,7 @@ where
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_> {
-        Box::new(LruCache::iter(self).rev())
+        Box::new(LruCache::iter(self))
     }
 }
 
@@ -106,19 +108,19 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// and if a second thread tries to acquire a lock for the same key, they will have to wait.
 ///
 /// ```
-/// use lockable::LockableLruCache;
+/// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let entry1 = cache.async_lock(4).await;
-/// let entry2 = cache.async_lock(5).await;
+/// let entry1 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
+/// let entry2 = cache.async_lock(5, AsyncLimit::unbounded()).await.unwrap();
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-/// // let entry3 = cache.async_lock(4).await;
+/// // let entry3 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
 ///
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
-/// let entry3 = cache.async_lock(4).await;
+/// let entry3 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
 /// # });
 /// ```
 ///
@@ -126,25 +128,25 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// the value of an existing entry.
 ///
 /// ```
-/// use lockable::LockableLruCache;
+/// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4).await;
+///     let mut entry = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
 ///     entry.insert(String::from("Hello World"));
 /// }
 ///
 /// async fn remove_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4).await;
+///     let mut entry = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
 ///     entry.remove();
 /// }
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-/// assert_eq!(None, cache.async_lock(4).await.value());
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
 /// insert_entry(&cache).await;
-/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4).await.value());
+/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
 /// remove_entry(&cache).await;
-/// assert_eq!(None, cache.async_lock(4).await.value());
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
 /// # });
 /// ```
 ///
@@ -152,14 +154,14 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// You can use an arbitrary type to index cache entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
 ///
 /// ```
-/// use lockable::LockableLruCache;
+/// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 /// struct CustomLockKey(u32);
 ///
 /// let cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = cache.async_lock(CustomLockKey(4)).await;
+/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::unbounded()).await.unwrap();
 /// # });
 /// ```
 ///
@@ -231,27 +233,49 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::LockableLruCache;
+    /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// let cache = LockableLruCache::<i64, String>::new();
-    /// let guard1 = cache.blocking_lock(4);
-    /// let guard2 = cache.blocking_lock(5);
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::unbounded()).unwrap();
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock(4);
+    /// // let guard3 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock(4);
+    /// let guard3 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
     /// ```
     #[inline]
-    pub fn blocking_lock(&self, key: K) -> LruGuard<'_, K, V> {
-        LockableMapImpl::blocking_lock(&self.map_impl, key)
+    pub fn blocking_lock<'a, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: SyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            OnEvictFn,
+        >,
+    ) -> Result<LruGuard<'a, K, V>>
+    where
+        OnEvictFn: Fn(
+            Vec<
+                GuardImpl<
+                    MapImpl<K, V>,
+                    V,
+                    LruCacheHooks,
+                    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+                >,
+            >,
+        ) -> Result<()>,
+    {
+        LockableMapImpl::blocking_lock(&self.map_impl, key, limit)
     }
 
     /// Lock a lock by key and return a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::blocking_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
+    /// This is identical to [LockableLruCache::blocking_lock], but it works on an `Arc<LockableLruCache<K, V>>` instead of a [LockableLruCache] and
     /// returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
@@ -266,23 +290,32 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::LockableLruCache;
+    /// use lockable::{SyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// let cache = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = cache.blocking_lock_owned(4);
-    /// let guard2 = cache.blocking_lock_owned(5);
+    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
+    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::unbounded()).unwrap();
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock_owned(4);
+    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock_owned(4);
+    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
     /// ```
     #[inline]
-    pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
-        LockableMapImpl::blocking_lock(Arc::clone(self), key)
+    pub fn blocking_lock_owned<OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: SyncLimit<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>, OnEvictFn>,
+    ) -> Result<LruOwnedGuard<K, V>>
+    where
+        OnEvictFn: Fn(
+            Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
+        ) -> Result<()>,
+    {
+        LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
     }
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
@@ -290,84 +323,202 @@ where
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
     /// a cache entry by itself. Cache entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
     ///
-    /// If the lock could not be acquired at this time, then [Err] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used from both async and non-async contexts.
     ///
-    /// Errors
-    /// -----
-    /// - If the lock could not be acquired because it is already locked, then this call will return [TryLockError::WouldBlock].
-    ///
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{TryLockError, LockableLruCache};
+    /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-    /// let guard1 = cache.blocking_lock(4);
-    /// let guard2 = cache.blocking_lock(5);
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::unbounded()).unwrap();
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = cache.try_lock(4);
-    /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
+    /// let guard3 = cache.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.try_lock(4);
-    /// assert!(guard3.is_ok());
+    /// let guard3 = cache.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock(&self, key: K) -> Result<LruGuard<'_, K, V>, TryLockError> {
-        LockableMapImpl::try_lock(&self.map_impl, key)
+    pub fn try_lock<'a, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: SyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            OnEvictFn,
+        >,
+    ) -> Result<Option<LruGuard<'a, K, V>>>
+    where
+        OnEvictFn: Fn(
+            Vec<
+                GuardImpl<
+                    MapImpl<K, V>,
+                    V,
+                    LruCacheHooks,
+                    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+                >,
+            >,
+        ) -> Result<()>,
+    {
+        LockableMapImpl::try_lock(&self.map_impl, key, limit)
     }
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::try_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
+    /// This is identical to [LockableLruCache::try_lock], but it works on an `Arc<LockableLruCache<K, V>>` instead of a [LockableLruCache] and
     /// returns an [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
-    /// This function does not block and can be used in both async and non-async contexts.
-    ///
-    /// Errors
-    /// -----
-    /// - If the lock could not be acquired because it is already locked, then this call will return [TryLockError::WouldBlock].
+    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// The lock will be unlocked when the guard is dropped.
     ///
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{TryLockError, LockableLruCache};
+    /// use lockable::{SyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// let pool = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = pool.blocking_lock(4);
-    /// let guard2 = pool.blocking_lock(5);
+    /// let guard1 = pool.blocking_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard2 = pool.blocking_lock(5, SyncLimit::unbounded()).unwrap();
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock_owned(4);
-    /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::unbounded()).unwrap();
+    /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock(4);
-    /// assert!(guard3.is_ok());
+    /// let guard3 = pool.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock_owned(self: &Arc<Self>, key: K) -> Result<LruOwnedGuard<K, V>, TryLockError> {
-        LockableMapImpl::try_lock(Arc::clone(self), key)
+    pub fn try_lock_owned<OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: SyncLimit<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>, OnEvictFn>,
+    ) -> Result<Option<LruOwnedGuard<K, V>>>
+    where
+        OnEvictFn: Fn(
+            Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
+        ) -> Result<()>,
+    {
+        LockableMapImpl::try_lock(Arc::clone(self), key, limit)
+    }
+
+    /// TODO Docs
+    /// TODO Test, we're only testing try_lock so far, not try_lock_async
+    #[inline]
+    pub async fn try_lock_async<'a, F, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: AsyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            F,
+            OnEvictFn,
+        >,
+    ) -> Result<Option<LruGuard<'a, K, V>>>
+    where
+        F: Future<Output = Result<()>>,
+        OnEvictFn: Fn(
+            Vec<
+                GuardImpl<
+                    MapImpl<K, V>,
+                    V,
+                    LruCacheHooks,
+                    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+                >,
+            >,
+        ) -> F,
+    {
+        LockableMapImpl::try_lock_async(&self.map_impl, key, limit).await
+    }
+
+    /// TODO Docs
+    /// TODO Test, we're only testing try_lock_owned so far, not try_lock_owned_async
+    #[inline]
+    pub async fn try_lock_owned_async<F, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: AsyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            Arc<LockableLruCache<K, V>>,
+            F,
+            OnEvictFn,
+        >,
+    ) -> Result<Option<LruOwnedGuard<K, V>>>
+    where
+        F: Future<Output = Result<()>>,
+        OnEvictFn:
+            Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
+    {
+        LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
 
     /// TODO Docs
     #[inline]
-    pub async fn async_lock(&self, key: K) -> LruGuard<'_, K, V> {
-        LockableMapImpl::async_lock(&self.map_impl, key).await
+    pub async fn async_lock<'a, F, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: AsyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            F,
+            OnEvictFn,
+        >,
+    ) -> Result<LruGuard<'a, K, V>>
+    where
+        F: Future<Output = Result<()>>,
+        OnEvictFn: Fn(
+            Vec<
+                GuardImpl<
+                    MapImpl<K, V>,
+                    V,
+                    LruCacheHooks,
+                    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+                >,
+            >,
+        ) -> F,
+    {
+        LockableMapImpl::async_lock(&self.map_impl, key, limit).await
     }
 
     /// TODO Docs
     #[inline]
-    pub async fn async_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
-        LockableMapImpl::async_lock(Arc::clone(self), key).await
+    pub async fn async_lock_owned<F, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: AsyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            Arc<LockableLruCache<K, V>>,
+            F,
+            OnEvictFn,
+        >,
+    ) -> Result<LruOwnedGuard<K, V>>
+    where
+        F: Future<Output = Result<()>>,
+        OnEvictFn:
+            Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
+    {
+        LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }
 
     /// TODO Docs
@@ -388,13 +539,13 @@ where
 
     /// TODO Docs
     /// TODO Test
-    pub fn lock_entries_unlocked_for_at_least(
-        &self,
+    pub fn lock_entries_unlocked_for_at_least_owned(
+        self: &Arc<Self>,
         duration: Duration,
-    ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
+    ) -> impl Iterator<Item = LruOwnedGuard<K, V>> {
         // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
         let now = Instant::now();
-        LockableMapImpl::lock_all_unlocked(&self.map_impl).filter(move |entry| {
+        LockableMapImpl::lock_all_unlocked(Arc::clone(self)).filter(move |entry| {
             if let Some(entry) = entry.value_raw() {
                 entry.last_unlocked + duration <= now
             } else {
@@ -409,29 +560,12 @@ where
         LockableMapImpl::lock_all(&self.map_impl).await
     }
 
-    /// If there are more than `num_remaining_unlocked` unlocked keys,
-    /// lock all unlocked keys except the `num_remaining_unlocked` newest
-    /// ones (in LRU order)
-    /// This can, for example, be used to enforce a capacity limit on
-    /// the number of unlocked entries in the cache by locking and then
-    /// deleting overlimit entries.
-    pub fn lock_all_unlocked_except_n_newest(
-        &self,
-        num_remaining_unlocked: usize,
-    ) -> impl Iterator<Item = LruGuard<'_, K, V>> {
-        let mut prev_entry_last_unlocked = None;
-        LockableMapImpl::lock_all_unlocked_except_n_first(&self.map_impl, num_remaining_unlocked)
-            .map(move |entry| {
-                let entry_last_unlocked = entry.value_raw().unwrap().last_unlocked;
-                if let Some(prev_entry_last_unlocked) = prev_entry_last_unlocked {
-                    assert!(
-                        prev_entry_last_unlocked <= entry_last_unlocked,
-                        "LRU order broken",
-                    );
-                }
-                prev_entry_last_unlocked = Some(entry_last_unlocked);
-                entry
-            })
+    /// TODO Docs. Note that it locks and returns all currently existing entries but is async, so new entries could be added concurrently and those entries may or may not be returned.
+    /// TODO Test
+    pub async fn lock_all_entries_owned(
+        self: &Arc<Self>,
+    ) -> impl Stream<Item = LruOwnedGuard<K, V>> {
+        LockableMapImpl::lock_all(Arc::clone(self)).await
     }
 }
 
@@ -467,7 +601,7 @@ pub type LruGuard<'a, K, V> = GuardImpl<
 pub type LruOwnedGuard<K, V> =
     GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
 
-// We implement Borrow<LockableMapImpl> for Arc<LockableLruCache> because that's the way, our LockableMapImpl can "see through" an instance
+// We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
 impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>> for Arc<LockableLruCache<K, V>>
@@ -482,33 +616,38 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::LockableLruCache;
+    use super::*;
     use crate::instantiate_lockable_tests;
-    use std::fmt::Debug;
-    use tokio::time::sleep;
+
+    impl<K, V> LockableLruCache<K, V>
+    where
+        K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+        V: Debug + 'static,
+    {
+        // TODO It would be nicer to implement a Fixture trait instead of creating a test api this way,
+        // but that requires GATs or associated type bounds and those aren't stabilized yet.
+        pub fn testapi_blocking_lock(&self, key: K) -> LruGuard<'_, K, V> {
+            self.blocking_lock(key, SyncLimit::unbounded()).unwrap()
+        }
+        pub fn testapi_blocking_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
+            self.blocking_lock_owned(key, SyncLimit::unbounded())
+                .unwrap()
+        }
+        pub fn testapi_try_lock(&self, key: K) -> Option<LruGuard<'_, K, V>> {
+            self.try_lock(key, SyncLimit::unbounded()).unwrap()
+        }
+        pub fn testapi_try_lock_owned(self: &Arc<Self>, key: K) -> Option<LruOwnedGuard<K, V>> {
+            self.try_lock_owned(key, SyncLimit::unbounded()).unwrap()
+        }
+        pub async fn testapi_async_lock(&self, key: K) -> LruGuard<'_, K, V> {
+            self.async_lock(key, AsyncLimit::unbounded()).await.unwrap()
+        }
+        pub async fn testapi_async_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
+            self.async_lock_owned(key, AsyncLimit::unbounded())
+                .await
+                .unwrap()
+        }
+    }
 
     instantiate_lockable_tests!(LockableLruCache);
-
-    pub fn assert_unordered_vec_eq<T: Eq + Ord + Debug>(mut lhs: Vec<T>, mut rhs: Vec<T>) {
-        lhs.sort();
-        rhs.sort();
-        assert_eq!(lhs, rhs);
-    }
-
-    #[tokio::test]
-    async fn test_lru_order_in_lock_all_unlocked_except_n_newest() {
-        let obj = LockableLruCache::<i64, i64>::new();
-        for i in 1..10 {
-            obj.async_lock(i).await.try_insert(i).unwrap();
-            sleep(Duration::from_millis(1)).await;
-        }
-
-        let locked: Vec<i64> = obj
-            .lock_all_unlocked_except_n_newest(5)
-            .map(|guard| *guard.key())
-            .collect();
-        assert_unordered_vec_eq(vec![1, 2, 3, 4], locked);
-    }
-
-    // TODO More tests for lock_all_except_n_newest_unlocked
 }

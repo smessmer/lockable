@@ -1,28 +1,28 @@
 [package]
 authors = ["Sebastian Messmer <messmer@cryfs.org>"]
-edition = "2021"
-name = "lockable"
-version = "0.0.2"
-readme = "README.md"
-documentation = "https://docs.rs/lockable"
-homepage = "https://github.com/smessmer/lockable"
-repository = "https://github.com/smessmer/lockable"
-license = "MIT OR Apache-2.0"
-keywords = ["concurrency", "thread", "locks", "mutex"]
 categories = ["asynchronous", "concurrency"]
 description = "This library offers hash map and cache data structures where individual entries can be locked"
+documentation = "https://docs.rs/lockable"
+edition = "2021"
+homepage = "https://github.com/smessmer/lockable"
+keywords = ["concurrency", "thread", "locks", "mutex"]
+license = "MIT OR Apache-2.0"
+name = "lockable"
+readme = "README.md"
+repository = "https://github.com/smessmer/lockable"
+version = "0.0.2"
 
 [package.metadata.docs.rs]
 all-features = true
 
 [dependencies]
 anyhow = "^1.0.56"
+futures = "^0.3.21"
+log = "^0.4.17"
 lru = {version = "^0.7.5", optional = true}
 owning_ref_lockable = "^0.4.2"
 thiserror = "^1.0.30"
 tokio = {version = "^1.17.0", features = ["sync", "time", "rt"]}
-futures = "^0.3.21"
-log = "^0.4.17"
 
 [dev-dependencies]
 tokio = {version = "^1.17.0", features = ["sync", "time", "macros", "rt-multi-thread"]}

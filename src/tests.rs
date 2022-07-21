@@ -2,11 +2,11 @@
 
 // TODO Add a test adding multiple entries and making sure all locking functions can read them
 // TODO Add tests checking that the async_lock, lock_owned, lock methods all block each other. For lock and lock_owned that can probably go into common tests.rs
+// TODO Test `limit` parameter of all locking functions
 
 #[macro_export]
 macro_rules! instantiate_lockable_tests {
     ($lockable_type: ident) => {
-        use crate::error::TryLockError;
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::{Arc, Mutex};
         use std::thread::{self, JoinHandle};
@@ -26,7 +26,7 @@ macro_rules! instantiate_lockable_tests {
             let counter = Arc::clone(counter);
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
-                let _guard = pool.blocking_lock(key);
+                let _guard = pool.testapi_blocking_lock(key);
                 counter.fetch_add(1, Ordering::SeqCst);
                 if let Some(barrier) = barrier {
                     let _barrier = barrier.lock().unwrap();
@@ -44,7 +44,7 @@ macro_rules! instantiate_lockable_tests {
             let counter = Arc::clone(counter);
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
-                let _guard = pool.blocking_lock_owned(key);
+                let _guard = pool.testapi_blocking_lock_owned(key);
                 counter.fetch_add(1, Ordering::SeqCst);
                 if let Some(barrier) = barrier {
                     let _barrier = barrier.lock().unwrap();
@@ -63,13 +63,13 @@ macro_rules! instantiate_lockable_tests {
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
                 let _guard = loop {
-                    match pool.try_lock(key) {
-                        Err(_) =>
+                    match pool.testapi_try_lock(key) {
+                        None =>
                         /* Continue loop */
                         {
                             ()
                         }
-                        Ok(guard) => break guard,
+                        Some(guard) => break guard,
                     }
                 };
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -90,13 +90,13 @@ macro_rules! instantiate_lockable_tests {
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
                 let _guard = loop {
-                    match pool.try_lock_owned(key) {
-                        Err(_) =>
+                    match pool.testapi_try_lock_owned(key) {
+                        None =>
                         /* Continue loop */
                         {
                             ()
                         }
-                        Ok(guard) => break guard,
+                        Some(guard) => break guard,
                     }
                 };
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -117,7 +117,7 @@ macro_rules! instantiate_lockable_tests {
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
                 let runtime = tokio::runtime::Runtime::new().unwrap();
-                let _guard = runtime.block_on(pool.async_lock(key));
+                let _guard = runtime.block_on(pool.testapi_async_lock(key));
                 counter.fetch_add(1, Ordering::SeqCst);
                 if let Some(barrier) = barrier {
                     let _barrier = barrier.lock().unwrap();
@@ -136,7 +136,7 @@ macro_rules! instantiate_lockable_tests {
             let barrier = barrier.map(Arc::clone);
             thread::spawn(move || {
                 let runtime = tokio::runtime::Runtime::new().unwrap();
-                let _guard = runtime.block_on(pool.async_lock_owned(key));
+                let _guard = runtime.block_on(pool.testapi_async_lock_owned(key));
                 counter.fetch_add(1, Ordering::SeqCst);
                 if let Some(barrier) = barrier {
                     let _barrier = barrier.lock().unwrap();
@@ -150,7 +150,7 @@ macro_rules! instantiate_lockable_tests {
         )]
         async fn blocking_lock_from_async_context_with_sync_api() {
             let p = $lockable_type::<isize, String>::new();
-            let _ = p.blocking_lock(3);
+            let _ = p.testapi_blocking_lock(3);
         }
 
         #[tokio::test]
@@ -159,7 +159,7 @@ macro_rules! instantiate_lockable_tests {
         )]
         async fn blocking_lock_owned_from_async_context_with_sync_api() {
             let p = Arc::new($lockable_type::<isize, String>::new());
-            let _ = p.blocking_lock_owned(3);
+            let _ = p.testapi_blocking_lock_owned(3);
         }
 
         mod simple {
@@ -171,7 +171,7 @@ macro_rules! instantiate_lockable_tests {
             async fn async_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.async_lock(4).await;
+                let guard = pool.testapi_async_lock(4).await;
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -182,7 +182,7 @@ macro_rules! instantiate_lockable_tests {
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.async_lock_owned(4).await;
+                let guard = pool.testapi_async_lock_owned(4).await;
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -193,7 +193,7 @@ macro_rules! instantiate_lockable_tests {
             fn blocking_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.blocking_lock(4);
+                let guard = pool.testapi_blocking_lock(4);
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -204,7 +204,7 @@ macro_rules! instantiate_lockable_tests {
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.blocking_lock_owned(4);
+                let guard = pool.testapi_blocking_lock_owned(4);
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -215,7 +215,7 @@ macro_rules! instantiate_lockable_tests {
             fn try_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.try_lock(4).unwrap();
+                let guard = pool.testapi_try_lock(4).unwrap();
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -226,7 +226,7 @@ macro_rules! instantiate_lockable_tests {
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard = pool.try_lock_owned(4).unwrap();
+                let guard = pool.testapi_try_lock_owned(4).unwrap();
                 assert!(guard.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
                 std::mem::drop(guard);
@@ -240,14 +240,14 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock(5);
+                let guard = pool.testapi_blocking_lock(5);
 
-                let error = pool.try_lock(5).unwrap_err();
-                assert!(matches!(error, TryLockError::WouldBlock));
+                let result = pool.testapi_try_lock(5);
+                assert!(result.is_none());
 
                 // Check that we can stil lock other locks while the child is waiting
                 {
-                    let _g = pool.try_lock(4).unwrap();
+                    let _g = pool.testapi_try_lock(4);
                 }
 
                 // Now free the lock so the we can get it again
@@ -255,7 +255,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // And check that we can get it again
                 {
-                    let _g = pool.try_lock(5).unwrap();
+                    let _g = pool.testapi_try_lock(5);
                 }
 
                 assert_eq!(0, pool.num_entries_or_locked());
@@ -264,14 +264,14 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock_owned(5);
+                let guard = pool.testapi_blocking_lock_owned(5);
 
-                let error = pool.try_lock_owned(5).unwrap_err();
-                assert!(matches!(error, TryLockError::WouldBlock));
+                let result = pool.testapi_try_lock_owned(5);
+                assert!(result.is_none());
 
                 // Check that we can stil lock other locks while the child is waiting
                 {
-                    let _g = pool.try_lock_owned(4).unwrap();
+                    let _g = pool.testapi_try_lock_owned(4);
                 }
 
                 // Now free the lock so the we can get it again
@@ -279,7 +279,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // And check that we can get it again
                 {
-                    let _g = pool.try_lock_owned(5).unwrap();
+                    let _g = pool.testapi_try_lock_owned(5);
                 }
 
                 assert_eq!(0, pool.num_entries_or_locked());
@@ -296,13 +296,13 @@ macro_rules! instantiate_lockable_tests {
                 async fn async_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock(4).await;
+                    let mut guard = pool.testapi_async_lock(4).await;
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.async_lock(4).await.value(),
+                        pool.testapi_async_lock(4).await.value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -311,13 +311,13 @@ macro_rules! instantiate_lockable_tests {
                 async fn async_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock_owned(4).await;
+                    let mut guard = pool.testapi_async_lock_owned(4).await;
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.async_lock_owned(4).await.value(),
+                        pool.testapi_async_lock_owned(4).await.value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -326,13 +326,13 @@ macro_rules! instantiate_lockable_tests {
                 fn blocking_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock(4);
+                    let mut guard = pool.testapi_blocking_lock(4);
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.blocking_lock(4).value(),
+                        pool.testapi_blocking_lock(4).value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -341,13 +341,13 @@ macro_rules! instantiate_lockable_tests {
                 fn blocking_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock_owned(4);
+                    let mut guard = pool.testapi_blocking_lock_owned(4);
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.blocking_lock_owned(4).value(),
+                        pool.testapi_blocking_lock_owned(4).value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -356,13 +356,13 @@ macro_rules! instantiate_lockable_tests {
                 fn try_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock(4).unwrap();
+                    let mut guard = pool.testapi_try_lock(4).unwrap();
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.try_lock(4).unwrap().value(),
+                        pool.testapi_try_lock(4).unwrap().value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -371,13 +371,13 @@ macro_rules! instantiate_lockable_tests {
                 fn try_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.try_lock_owned(4).unwrap().value(),
+                        pool.testapi_try_lock_owned(4).unwrap().value(),
                         Some(&String::from("Cache Entry Value"))
                     );
                 }
@@ -389,95 +389,95 @@ macro_rules! instantiate_lockable_tests {
                 #[tokio::test]
                 async fn async_lock() {
                     let pool = $lockable_type::<isize, String>::new();
-                    pool.async_lock(4)
+                    pool.testapi_async_lock(4)
                         .await
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock(4).await;
+                    let mut guard = pool.testapi_async_lock(4).await;
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.async_lock(4).await.value(), None);
+                    assert_eq!(pool.testapi_async_lock(4).await.value(), None);
                 }
 
                 #[tokio::test]
                 async fn async_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
-                    pool.async_lock_owned(4)
+                    pool.testapi_async_lock_owned(4)
                         .await
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock_owned(4).await;
+                    let mut guard = pool.testapi_async_lock_owned(4).await;
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.async_lock_owned(4).await.value(), None);
+                    assert_eq!(pool.testapi_async_lock_owned(4).await.value(), None);
                 }
 
                 #[test]
                 fn blocking_lock() {
                     let pool = $lockable_type::<isize, String>::new();
-                    pool.blocking_lock(4)
+                    pool.testapi_blocking_lock(4)
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock(4);
+                    let mut guard = pool.testapi_blocking_lock(4);
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.blocking_lock(4).value(), None);
+                    assert_eq!(pool.testapi_blocking_lock(4).value(), None);
                 }
 
                 #[test]
                 fn blocking_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
-                    pool.blocking_lock_owned(4)
+                    pool.testapi_blocking_lock_owned(4)
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock_owned(4);
+                    let mut guard = pool.testapi_blocking_lock_owned(4);
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.blocking_lock_owned(4).value(), None);
+                    assert_eq!(pool.testapi_blocking_lock_owned(4).value(), None);
                 }
 
                 #[test]
                 fn try_lock() {
                     let pool = $lockable_type::<isize, String>::new();
-                    pool.try_lock(4)
+                    pool.testapi_try_lock(4)
                         .unwrap()
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock(4).unwrap();
+                    let mut guard = pool.testapi_try_lock(4).unwrap();
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.try_lock(4).unwrap().value(), None);
+                    assert_eq!(pool.testapi_try_lock(4).unwrap().value(), None);
                 }
 
                 #[test]
                 fn try_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
-                    pool.try_lock_owned(4)
+                    pool.testapi_try_lock_owned(4)
                         .unwrap()
                         .insert(String::from("Cache Entry Value"));
 
                     assert_eq!(1, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                     guard.remove();
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
-                    assert_eq!(pool.try_lock_owned(4).unwrap().value(), None);
+                    assert_eq!(pool.testapi_try_lock_owned(4).unwrap().value(), None);
                 }
             }
 
@@ -488,14 +488,14 @@ macro_rules! instantiate_lockable_tests {
                 async fn async_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock(4).await;
+                    let mut guard = pool.testapi_async_lock(4).await;
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.async_lock(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_async_lock(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.async_lock(4).await.value(),
+                        pool.testapi_async_lock(4).await.value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -504,14 +504,14 @@ macro_rules! instantiate_lockable_tests {
                 async fn async_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock_owned(4).await;
+                    let mut guard = pool.testapi_async_lock_owned(4).await;
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.async_lock_owned(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_async_lock_owned(4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.async_lock_owned(4).await.value(),
+                        pool.testapi_async_lock_owned(4).await.value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -520,14 +520,14 @@ macro_rules! instantiate_lockable_tests {
                 fn blocking_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock(4);
+                    let mut guard = pool.testapi_blocking_lock(4);
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.blocking_lock(4).value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_blocking_lock(4).value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.blocking_lock(4).value(),
+                        pool.testapi_blocking_lock(4).value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -536,14 +536,14 @@ macro_rules! instantiate_lockable_tests {
                 fn blocking_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock_owned(4);
+                    let mut guard = pool.testapi_blocking_lock_owned(4);
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.blocking_lock_owned(4).value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_blocking_lock_owned(4).value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.blocking_lock_owned(4).value(),
+                        pool.testapi_blocking_lock_owned(4).value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -552,14 +552,14 @@ macro_rules! instantiate_lockable_tests {
                 fn try_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock(4).unwrap();
+                    let mut guard = pool.testapi_try_lock(4).unwrap();
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.try_lock(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_try_lock(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.try_lock(4).unwrap().value(),
+                        pool.testapi_try_lock(4).unwrap().value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -568,14 +568,14 @@ macro_rules! instantiate_lockable_tests {
                 fn try_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                     guard.insert(String::from("Cache Entry Value"));
                     assert_eq!(1, pool.num_entries_or_locked());
                     std::mem::drop(guard);
-                    *pool.try_lock_owned(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
+                    *pool.testapi_try_lock_owned(4).unwrap().value_mut().unwrap() = String::from("New Cache Entry Value");
                     assert_eq!(1, pool.num_entries_or_locked());
                     assert_eq!(
-                        pool.try_lock_owned(4).unwrap().value(),
+                        pool.testapi_try_lock_owned(4).unwrap().value(),
                         Some(&String::from("New Cache Entry Value"))
                     );
                 }
@@ -588,66 +588,66 @@ macro_rules! instantiate_lockable_tests {
                 async fn async_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock(4).await;
+                    let mut guard = pool.testapi_async_lock(4).await;
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.async_lock(4).await.key());
+                    assert_eq!(4, *pool.testapi_async_lock(4).await.key());
                 }
 
                 #[tokio::test]
                 async fn async_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.async_lock_owned(4).await;
+                    let mut guard = pool.testapi_async_lock_owned(4).await;
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.async_lock_owned(4).await.key());
+                    assert_eq!(4, *pool.testapi_async_lock_owned(4).await.key());
                 }
 
                 #[test]
                 fn blocking_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock(4);
+                    let mut guard = pool.testapi_blocking_lock(4);
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.blocking_lock(4).key());
+                    assert_eq!(4, *pool.testapi_blocking_lock(4).key());
                 }
 
                 #[test]
                 fn blocking_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.blocking_lock_owned(4);
+                    let mut guard = pool.testapi_blocking_lock_owned(4);
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.blocking_lock_owned(4).key());
+                    assert_eq!(4, *pool.testapi_blocking_lock_owned(4).key());
                 }
 
                 #[test]
                 fn try_lock() {
                     let pool = $lockable_type::<isize, String>::new();
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock(4).unwrap();
+                    let mut guard = pool.testapi_try_lock(4).unwrap();
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.try_lock(4).unwrap().key());
+                    assert_eq!(4, *pool.testapi_try_lock(4).unwrap().key());
                 }
 
                 #[test]
                 fn try_lock_owned() {
                     let pool = Arc::new($lockable_type::<isize, String>::new());
                     assert_eq!(0, pool.num_entries_or_locked());
-                    let mut guard = pool.try_lock_owned(4).unwrap();
+                    let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                     assert_eq!(4, *guard.key());
                     guard.insert(String::from("Cache Entry Value"));
                     std::mem::drop(guard);
-                    assert_eq!(4, *pool.try_lock_owned(4).unwrap().key());
+                    assert_eq!(4, *pool.testapi_try_lock_owned(4).unwrap().key());
                 }
             }
         }
@@ -661,29 +661,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.async_lock(4).await;
+                let guard = pool.testapi_async_lock(4).await;
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.async_lock(4).await;
+                let mut guard = pool.testapi_async_lock(4).await;
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.async_lock(4).await;
+                let mut guard = pool.testapi_async_lock(4).await;
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.async_lock(4).await.insert(String::from("Content"));
-                pool.async_lock(5).await.insert(String::from("Content"));
-                pool.async_lock(6).await.insert(String::from("Content"));
+                pool.testapi_async_lock(4).await.insert(String::from("Content"));
+                pool.testapi_async_lock(5).await.insert(String::from("Content"));
+                pool.testapi_async_lock(6).await.insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -695,29 +695,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.async_lock_owned(4).await;
+                let guard = pool.testapi_async_lock_owned(4).await;
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.async_lock_owned(4).await;
+                let mut guard = pool.testapi_async_lock_owned(4).await;
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.async_lock_owned(4).await;
+                let mut guard = pool.testapi_async_lock_owned(4).await;
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.async_lock_owned(4).await.insert(String::from("Content"));
-                pool.async_lock_owned(5).await.insert(String::from("Content"));
-                pool.async_lock_owned(6).await.insert(String::from("Content"));
+                pool.testapi_async_lock_owned(4).await.insert(String::from("Content"));
+                pool.testapi_async_lock_owned(5).await.insert(String::from("Content"));
+                pool.testapi_async_lock_owned(6).await.insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -729,29 +729,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.blocking_lock(4);
+                let guard = pool.testapi_blocking_lock(4);
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.blocking_lock(4);
+                let mut guard = pool.testapi_blocking_lock(4);
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.blocking_lock(4);
+                let mut guard = pool.testapi_blocking_lock(4);
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.blocking_lock(4).insert(String::from("Content"));
-                pool.blocking_lock(5).insert(String::from("Content"));
-                pool.blocking_lock(6).insert(String::from("Content"));
+                pool.testapi_blocking_lock(4).insert(String::from("Content"));
+                pool.testapi_blocking_lock(5).insert(String::from("Content"));
+                pool.testapi_blocking_lock(6).insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -763,29 +763,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.blocking_lock_owned(4);
+                let guard = pool.testapi_blocking_lock_owned(4);
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.blocking_lock_owned(4);
+                let mut guard = pool.testapi_blocking_lock_owned(4);
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.blocking_lock_owned(4);
+                let mut guard = pool.testapi_blocking_lock_owned(4);
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.blocking_lock_owned(4).insert(String::from("Content"));
-                pool.blocking_lock_owned(5).insert(String::from("Content"));
-                pool.blocking_lock_owned(6).insert(String::from("Content"));
+                pool.testapi_blocking_lock_owned(4).insert(String::from("Content"));
+                pool.testapi_blocking_lock_owned(5).insert(String::from("Content"));
+                pool.testapi_blocking_lock_owned(6).insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -797,29 +797,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.try_lock(4).unwrap();
+                let guard = pool.testapi_try_lock(4).unwrap();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.try_lock(4).unwrap();
+                let mut guard = pool.testapi_try_lock(4).unwrap();
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.try_lock(4).unwrap();
+                let mut guard = pool.testapi_try_lock(4).unwrap();
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.try_lock(4).unwrap().insert(String::from("Content"));
-                pool.try_lock(5).unwrap().insert(String::from("Content"));
-                pool.try_lock(6).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock(4).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock(5).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock(6).unwrap().insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -831,29 +831,29 @@ macro_rules! instantiate_lockable_tests {
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Locking lists key, unlocking unlists key
-                let guard = pool.try_lock_owned(4).unwrap();
+                let guard = pool.testapi_try_lock_owned(4).unwrap();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // If entry is inserted, it remains listed after unlocking
-                let mut guard = pool.try_lock_owned(4).unwrap();
+                let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                 guard.insert(String::from("Value"));
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(vec![4], pool.keys());
 
                 // If entry is removed, it is not listed anymore after unlocking
-                let mut guard = pool.try_lock_owned(4).unwrap();
+                let mut guard = pool.testapi_try_lock_owned(4).unwrap();
                 guard.remove();
                 assert_eq!(vec![4], pool.keys());
                 std::mem::drop(guard);
                 assert_eq!(Vec::<isize>::new(), pool.keys());
 
                 // Add multiple keys
-                pool.try_lock_owned(4).unwrap().insert(String::from("Content"));
-                pool.try_lock_owned(5).unwrap().insert(String::from("Content"));
-                pool.try_lock_owned(6).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock_owned(4).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock_owned(5).unwrap().insert(String::from("Content"));
+                pool.testapi_try_lock_owned(6).unwrap().insert(String::from("Content"));
                 let mut keys = pool.keys();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
@@ -867,13 +867,13 @@ macro_rules! instantiate_lockable_tests {
             async fn async_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.async_lock(1).await;
+                let guard1 = pool.testapi_async_lock(1).await;
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.async_lock(2).await;
+                let guard2 = pool.testapi_async_lock(2).await;
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.async_lock(3).await;
+                let guard3 = pool.testapi_async_lock(3).await;
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -889,13 +889,13 @@ macro_rules! instantiate_lockable_tests {
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.async_lock_owned(1).await;
+                let guard1 = pool.testapi_async_lock_owned(1).await;
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.async_lock_owned(2).await;
+                let guard2 = pool.testapi_async_lock_owned(2).await;
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.async_lock_owned(3).await;
+                let guard3 = pool.testapi_async_lock_owned(3).await;
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -911,13 +911,13 @@ macro_rules! instantiate_lockable_tests {
             fn blocking_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.blocking_lock(1);
+                let guard1 = pool.testapi_blocking_lock(1);
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.blocking_lock(2);
+                let guard2 = pool.testapi_blocking_lock(2);
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.blocking_lock(3);
+                let guard3 = pool.testapi_blocking_lock(3);
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -933,13 +933,13 @@ macro_rules! instantiate_lockable_tests {
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.blocking_lock_owned(1);
+                let guard1 = pool.testapi_blocking_lock_owned(1);
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.blocking_lock_owned(2);
+                let guard2 = pool.testapi_blocking_lock_owned(2);
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.blocking_lock_owned(3);
+                let guard3 = pool.testapi_blocking_lock_owned(3);
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -955,13 +955,13 @@ macro_rules! instantiate_lockable_tests {
             fn try_lock() {
                 let pool = $lockable_type::<isize, String>::new();
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.try_lock(1).unwrap();
+                let guard1 = pool.testapi_try_lock(1).unwrap();
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.try_lock(2).unwrap();
+                let guard2 = pool.testapi_try_lock(2).unwrap();
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.try_lock(3).unwrap();
+                let guard3 = pool.testapi_try_lock(3).unwrap();
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -977,13 +977,13 @@ macro_rules! instantiate_lockable_tests {
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 assert_eq!(0, pool.num_entries_or_locked());
-                let guard1 = pool.try_lock_owned(1).unwrap();
+                let guard1 = pool.testapi_try_lock_owned(1).unwrap();
                 assert!(guard1.value().is_none());
                 assert_eq!(1, pool.num_entries_or_locked());
-                let guard2 = pool.try_lock_owned(2).unwrap();
+                let guard2 = pool.testapi_try_lock_owned(2).unwrap();
                 assert!(guard2.value().is_none());
                 assert_eq!(2, pool.num_entries_or_locked());
-                let guard3 = pool.try_lock_owned(3).unwrap();
+                let guard3 = pool.testapi_try_lock_owned(3).unwrap();
                 assert!(guard3.value().is_none());
                 assert_eq!(3, pool.num_entries_or_locked());
 
@@ -1002,7 +1002,7 @@ macro_rules! instantiate_lockable_tests {
             #[tokio::test]
             async fn async_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.async_lock(5).await;
+                let guard = pool.testapi_async_lock(5).await;
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1014,7 +1014,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.async_lock(4).await;
+                    let _g = pool.testapi_async_lock(4).await;
                 }
 
                 // Now free the lock so the child can get it
@@ -1030,7 +1030,7 @@ macro_rules! instantiate_lockable_tests {
             #[tokio::test]
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.async_lock_owned(5).await;
+                let guard = pool.testapi_async_lock_owned(5).await;
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1042,7 +1042,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.async_lock_owned(4).await;
+                    let _g = pool.testapi_async_lock_owned(4).await;
                 }
 
                 // Now free the lock so the child can get it
@@ -1058,7 +1058,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock(5);
+                let guard = pool.testapi_blocking_lock(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1070,7 +1070,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.blocking_lock(4);
+                    let _g = pool.testapi_blocking_lock(4);
                 }
 
                 // Now free the lock so the child can get it
@@ -1086,7 +1086,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock_owned(5);
+                let guard = pool.testapi_blocking_lock_owned(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1098,7 +1098,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.blocking_lock_owned(4);
+                    let _g = pool.testapi_blocking_lock_owned(4);
                 }
 
                 // Now free the lock so the child can get it
@@ -1114,7 +1114,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.try_lock(5).unwrap();
+                let guard = pool.testapi_try_lock(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1126,7 +1126,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.try_lock(4).unwrap();
+                    let _g = pool.testapi_try_lock(4);
                 }
 
                 // Now free the lock so the child can get it
@@ -1142,7 +1142,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.try_lock_owned(5).unwrap();
+                let guard = pool.testapi_try_lock_owned(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
 
@@ -1154,7 +1154,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the child is waiting
                 {
-                    let _g = pool.try_lock_owned(4).unwrap();
+                    let _g = pool.testapi_try_lock_owned(4);
                 }
 
                 // Now free the lock so the child can get it
@@ -1174,7 +1174,7 @@ macro_rules! instantiate_lockable_tests {
             #[tokio::test]
             async fn async_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.async_lock(5).await;
+                let guard = pool.testapi_async_lock(5).await;
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1189,7 +1189,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
-                    let _g = pool.async_lock(4).await;
+                    let _g = pool.testapi_async_lock(4).await;
                 }
 
                 // Now free the lock so a child can get it
@@ -1213,7 +1213,7 @@ macro_rules! instantiate_lockable_tests {
             #[tokio::test]
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.async_lock_owned(5).await;
+                let guard = pool.testapi_async_lock_owned(5).await;
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1228,7 +1228,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
-                    let _g = pool.async_lock_owned(4).await;
+                    let _g = pool.testapi_async_lock_owned(4).await;
                 }
 
                 // Now free the lock so a child can get it
@@ -1252,7 +1252,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock(5);
+                let guard = pool.testapi_blocking_lock(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1267,7 +1267,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
-                    let _g = pool.blocking_lock(4);
+                    let _g = pool.testapi_blocking_lock(4);
                 }
 
                 // Now free the lock so a child can get it
@@ -1291,7 +1291,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.blocking_lock_owned(5);
+                let guard = pool.testapi_blocking_lock_owned(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1306,7 +1306,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
-                    let _g = pool.blocking_lock_owned(4);
+                    let _g = pool.testapi_blocking_lock_owned(4);
                 }
 
                 // Now free the lock so a child can get it
@@ -1330,7 +1330,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.try_lock(5).unwrap();
+                let guard = pool.testapi_try_lock(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1345,7 +1345,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can still lock other locks while the children are waiting
                 {
-                    let _g = pool.try_lock(4).unwrap();
+                    let _g = pool.testapi_try_lock(4);
                 }
 
                 // Now free the lock so a child can get it
@@ -1369,7 +1369,7 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.try_lock_owned(5).unwrap();
+                let guard = pool.testapi_try_lock_owned(5);
 
                 let counter = Arc::new(AtomicU32::new(0));
                 let barrier = Arc::new(Mutex::new(()));
@@ -1384,7 +1384,7 @@ macro_rules! instantiate_lockable_tests {
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
-                    let _g = pool.try_lock_owned(4).unwrap();
+                    let _g = pool.testapi_try_lock_owned(4);
                 }
 
                 // Now free the lock so a child can get it
@@ -1410,7 +1410,7 @@ macro_rules! instantiate_lockable_tests {
         fn blocking_lock_owned_guards_can_be_passed_around() {
             let make_guard = || {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.blocking_lock_owned(5)
+                pool.testapi_blocking_lock_owned(5)
             };
             let _guard = make_guard();
         }
@@ -1419,7 +1419,7 @@ macro_rules! instantiate_lockable_tests {
         async fn async_lock_owned_guards_can_be_passed_around() {
             let make_guard = || async {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.async_lock_owned(5).await
+                pool.testapi_async_lock_owned(5).await
             };
             let _guard = make_guard().await;
         }
@@ -1428,17 +1428,17 @@ macro_rules! instantiate_lockable_tests {
         fn test_try_lock_owned_guards_can_be_passed_around() {
             let make_guard = || {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                pool.try_lock_owned(5)
+                pool.testapi_try_lock_owned(5)
             };
             let guard = make_guard();
-            assert!(guard.is_ok());
+            assert!(guard.is_some());
         }
 
         #[tokio::test]
         async fn async_lock_guards_can_be_held_across_await_points() {
             let task = async {
                 let pool = $lockable_type::<isize, String>::new();
-                let guard = pool.async_lock(3).await;
+                let guard = pool.testapi_async_lock(3).await;
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 std::mem::drop(guard);
             };
@@ -1455,7 +1455,7 @@ macro_rules! instantiate_lockable_tests {
         async fn async_lock_owned_guards_can_be_held_across_await_points() {
             let task = async {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                let guard = pool.async_lock_owned(3).await;
+                let guard = pool.testapi_async_lock_owned(3).await;
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 std::mem::drop(guard);
             };

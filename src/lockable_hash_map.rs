@@ -5,9 +5,9 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::error::TryLockError;
 use super::guard::GuardImpl;
 use super::hooks::NoopHooks;
+use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
@@ -193,7 +193,8 @@ where
     /// ```
     #[inline]
     pub fn blocking_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
-        LockableMapImpl::blocking_lock(&self.map_impl, key)
+        LockableMapImpl::blocking_lock(&self.map_impl, key, SyncLimit::unbounded())
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// Lock a lock by key and return a guard with any potential map entry for that key.
@@ -229,7 +230,8 @@ where
     /// ```
     #[inline]
     pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
-        LockableMapImpl::blocking_lock(Arc::clone(self), key)
+        LockableMapImpl::blocking_lock(Arc::clone(self), key, SyncLimit::unbounded())
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
@@ -237,19 +239,15 @@ where
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
     /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
     ///
-    /// If the lock could not be acquired at this time, then [Err] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used from both async and non-async contexts.
     ///
-    /// Errors
-    /// -----
-    /// - If the lock could not be acquired because it is already locked, then this call will return [TryLockError::WouldBlock].
-    ///
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{TryLockError, LockableHashMap};
+    /// use lockable::LockableHashMap;
     ///
     /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
     /// let guard1 = hash_map.blocking_lock(4);
@@ -257,16 +255,17 @@ where
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
     /// let guard3 = hash_map.try_lock(4);
-    /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
+    /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = hash_map.try_lock(4);
-    /// assert!(guard3.is_ok());
+    /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock(&self, key: K) -> Result<HashMapGuard<'_, K, V>, TryLockError> {
-        LockableMapImpl::try_lock(&self.map_impl, key)
+    pub fn try_lock(&self, key: K) -> Option<HashMapGuard<'_, K, V>> {
+        LockableMapImpl::try_lock(&self.map_impl, key, SyncLimit::unbounded())
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
@@ -275,16 +274,15 @@ where
     /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
-    /// This function does not block and can be used in both async and non-async contexts.
+    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// The lock will be unlocked when the guard is dropped.
     ///
-    /// Errors
-    /// -----
-    /// - If the lock could not be acquired because it is already locked, then this call will return [TryLockError::WouldBlock].
+    /// This function does not block and can be used in both async and non-async contexts.
     ///
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{TryLockError, LockableHashMap};
+    /// use lockable::LockableHashMap;
     /// use std::sync::Arc;
     ///
     /// let pool = Arc::new(LockableHashMap::<i64, String>::new());
@@ -293,31 +291,33 @@ where
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
     /// let guard3 = pool.try_lock_owned(4);
-    /// assert!(matches!(guard3.unwrap_err(), TryLockError::WouldBlock));
+    /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = pool.try_lock(4);
-    /// assert!(guard3.is_ok());
+    /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock_owned(
-        self: &Arc<Self>,
-        key: K,
-    ) -> Result<HashMapOwnedGuard<K, V>, TryLockError> {
-        LockableMapImpl::try_lock(Arc::clone(self), key)
+    pub fn try_lock_owned(self: &Arc<Self>, key: K) -> Option<HashMapOwnedGuard<K, V>> {
+        LockableMapImpl::try_lock(Arc::clone(self), key, SyncLimit::unbounded())
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// TODO Docs
     #[inline]
     pub async fn async_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
-        LockableMapImpl::async_lock(&self.map_impl, key).await
+        LockableMapImpl::async_lock(&self.map_impl, key, AsyncLimit::unbounded())
+            .await
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// TODO Docs
     #[inline]
     pub async fn async_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
-        LockableMapImpl::async_lock(Arc::clone(self), key).await
+        LockableMapImpl::async_lock(Arc::clone(self), key, AsyncLimit::unbounded())
+            .await
+            .expect("This can only fail if not using SyncLimit::unbounded()")
     }
 
     /// TODO Docs
@@ -378,8 +378,35 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::LockableHashMap;
+    use super::*;
     use crate::instantiate_lockable_tests;
+
+    impl<K, V> LockableHashMap<K, V>
+    where
+        K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+        V: Debug + 'static,
+    {
+        // TODO It would be nicer to implement a Fixture trait instead of creating a test api this way,
+        // but that requires GATs or associated type bounds and those aren't stabilized yet.
+        pub fn testapi_blocking_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
+            self.blocking_lock(key)
+        }
+        pub fn testapi_blocking_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
+            self.blocking_lock_owned(key)
+        }
+        pub fn testapi_try_lock(&self, key: K) -> Option<HashMapGuard<'_, K, V>> {
+            self.try_lock(key)
+        }
+        pub fn testapi_try_lock_owned(self: &Arc<Self>, key: K) -> Option<HashMapOwnedGuard<K, V>> {
+            self.try_lock_owned(key)
+        }
+        pub async fn testapi_async_lock(&self, key: K) -> HashMapGuard<'_, K, V> {
+            self.async_lock(key).await
+        }
+        pub async fn testapi_async_lock_owned(self: &Arc<Self>, key: K) -> HashMapOwnedGuard<K, V> {
+            self.async_lock_owned(key).await
+        }
+    }
 
     instantiate_lockable_tests!(LockableHashMap);
 }

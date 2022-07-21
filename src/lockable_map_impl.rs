@@ -2,15 +2,16 @@ use anyhow::Result;
 use futures::stream::{FuturesUnordered, Stream};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
 
-use super::error::TryLockError;
 use super::guard::GuardImpl;
 use super::hooks::{Hooks, NoopHooks};
+use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
@@ -107,6 +108,8 @@ where
         self.num_locked.load(Ordering::SeqCst)
     }
 
+    // TODO We can probably remove num_unlocked and the atomic counter for it, because we now use a different mechanism
+    // to enforce a max_entries limit.
     #[inline]
     pub fn num_unlocked(&self) -> usize {
         let entries = self._cache_entries();
@@ -134,13 +137,111 @@ where
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
     }
 
-    fn _load_or_insert_mutex_for_key(
-        &self,
+    async fn _load_or_insert_mutex_for_key_async<S, F, OnEvictFn>(
+        this: &S,
         key: &M::K,
-    ) -> Arc<tokio::sync::Mutex<EntryValue<M::V>>> {
-        let mut cache_entries = self._cache_entries();
+        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
+    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>>
+    where
+        S: Borrow<Self> + Clone,
+        F: Future<Output = Result<()>>,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
+    {
+        // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
+        let mut cache_entries = match limit {
+            AsyncLimit::Unbounded { .. } => {
+                // do nothing
+                this.borrow()._cache_entries()
+            }
+            AsyncLimit::Bounded {
+                max_entries,
+                on_evict,
+            } => {
+                // free up space for the new entry if necessary
+                loop {
+                    let locked = {
+                        let mut cache_entries = this.borrow()._cache_entries();
+                        let num_overlimit_entries =
+                            cache_entries.len().saturating_sub(max_entries.get() - 1);
+                        if num_overlimit_entries == 0 {
+                            // There is enough space, no need to free up space
+                            break cache_entries;
+                        }
+                        // There is not enough space, free up some.
+                        let locked = Self::_lock_up_to_n_first_unlocked_entries(
+                            this,
+                            &mut cache_entries,
+                            num_overlimit_entries,
+                        );
+                        // We now have some entries locked that may free up enough space.
+                        // Let's evict them. We have to free up the cache_entries lock for that
+                        // so that the on_evict user code can call back into Self::_unlock()
+                        // for those entries. That means other user code may also run and cause
+                        // race conditions. Because of that, once on_evict returns, we'll check
+                        // take the lock again in the next loop iteration and check again if we now
+                        // have enough space
+                        std::mem::drop(cache_entries);
+                        locked
+                    };
+                    on_evict(locked).await?;
+                }
+            }
+        };
         let entry = cache_entries.get_or_insert_none(key);
-        Arc::clone(entry)
+        Ok(Arc::clone(entry))
+    }
+
+    fn _load_or_insert_mutex_for_key_sync<S, OnEvictFn>(
+        this: &S,
+        key: &M::K,
+        limit: SyncLimit<M, V, H, S, OnEvictFn>,
+    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>>
+    where
+        S: Borrow<Self> + Clone,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+    {
+        // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
+        let mut cache_entries = match limit {
+            SyncLimit::Unbounded { .. } => {
+                // do nothing
+                this.borrow()._cache_entries()
+            }
+            SyncLimit::Bounded {
+                max_entries,
+                on_evict,
+            } => {
+                // free up space for the new entry if necessary
+                loop {
+                    let locked = {
+                        let mut cache_entries = this.borrow()._cache_entries();
+                        let num_overlimit_entries =
+                            cache_entries.len().saturating_sub(max_entries.get() - 1);
+                        if num_overlimit_entries == 0 {
+                            // There is enough space, no need to free up space
+                            break cache_entries;
+                        }
+                        // There is not enough space, free up some.
+                        let locked = Self::_lock_up_to_n_first_unlocked_entries(
+                            this,
+                            &mut cache_entries,
+                            num_overlimit_entries,
+                        );
+                        // We now have some entries locked that may free up enough space.
+                        // Let's evict them. We have to free up the cache_entries lock for that
+                        // so that the on_evict user code can call back into Self::_unlock()
+                        // for those entries. That means other user code may also run and cause
+                        // race conditions. Because of that, once on_evict returns, we'll check
+                        // take the lock again in the next loop iteration and check again if we now
+                        // have enough space
+                        std::mem::drop(cache_entries);
+                        locked
+                    };
+                    on_evict(locked)?;
+                }
+            }
+        };
+        let entry = cache_entries.get_or_insert_none(key);
+        Ok(Arc::clone(entry))
     }
 
     fn _make_guard<S: Borrow<Self>>(
@@ -152,40 +253,100 @@ where
         GuardImpl::new(this, key.clone(), guard)
     }
 
+    // TODO Remove
     #[inline]
-    pub fn blocking_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, V, H, S> {
-        let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
+    pub fn _test_blocking_lock<S: Borrow<Self> + Clone>(
+        this: S,
+        key: M::K,
+    ) -> Result<GuardImpl<M, V, H, S>> {
+        Self::blocking_lock(this, key, SyncLimit::unbounded())
+    }
+
+    #[inline]
+    pub fn blocking_lock<S, OnEvictFn>(
+        this: S,
+        key: M::K,
+        limit: SyncLimit<M, V, H, S, OnEvictFn>,
+    ) -> Result<GuardImpl<M, V, H, S>>
+    where
+        S: Borrow<Self> + Clone,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+    {
+        let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the thread until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::blocking_lock(mutex);
-        Self::_make_guard(this, key, guard)
+        Ok(Self::_make_guard(this, key, guard))
+    }
+
+    // TODO Remove
+    #[inline]
+    pub async fn _test_async_lock<S: Borrow<Self> + Clone>(
+        this: S,
+        key: M::K,
+    ) -> Result<GuardImpl<M, V, H, S>> {
+        Self::async_lock(this, key, AsyncLimit::unbounded()).await
     }
 
     #[inline]
-    pub async fn async_lock<S: Borrow<Self>>(this: S, key: M::K) -> GuardImpl<M, V, H, S> {
-        let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
+    pub async fn async_lock<S, F, OnEvictFn>(
+        this: S,
+        key: M::K,
+        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
+    ) -> Result<GuardImpl<M, V, H, S>>
+    where
+        S: Borrow<Self> + Clone,
+        F: Future<Output = Result<()>>,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
+    {
+        let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the task until the mutex for this key is acquired.
 
         let guard = LockedMutexGuard::async_lock(mutex).await;
-        Self::_make_guard(this, key, guard)
+        Ok(Self::_make_guard(this, key, guard))
     }
 
     #[inline]
-    pub fn try_lock<S: Borrow<Self>>(
+    pub fn try_lock<S, OnEvictFn>(
         this: S,
         key: M::K,
-    ) -> Result<GuardImpl<M, V, H, S>, TryLockError> {
-        let mutex = this.borrow()._load_or_insert_mutex_for_key(&key);
+        limit: SyncLimit<M, V, H, S, OnEvictFn>,
+    ) -> Result<Option<GuardImpl<M, V, H, S>>>
+    where
+        S: Borrow<Self> + Clone,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+    {
+        let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
 
-        let guard = match LockedMutexGuard::try_lock(mutex) {
-            Ok(guard) => Ok(guard),
-            Err(_) => Err(TryLockError::WouldBlock),
-        }?;
-        Ok(Self::_make_guard(this, key, guard))
+        match LockedMutexGuard::try_lock(mutex) {
+            Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
+            Err(_) => Ok(None),
+        }
+    }
+
+    #[inline]
+    pub async fn try_lock_async<S, F, OnEvictFn>(
+        this: S,
+        key: M::K,
+        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
+    ) -> Result<Option<GuardImpl<M, V, H, S>>>
+    where
+        S: Borrow<Self> + Clone,
+        F: Future<Output = Result<()>>,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
+    {
+        let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
+        // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
+        // The following tries to lock the mutex.
+
+        match LockedMutexGuard::try_lock(mutex) {
+            Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
+            Err(_) => Ok(None),
+        }
     }
 
     // TODO Test
@@ -311,25 +472,44 @@ where
     /// the number of unlocked entries in the cache by locking and then
     /// deleting overlimit entries.
     /// TODO Test
-    pub fn lock_all_unlocked_except_n_first<S: Borrow<Self> + Clone>(
-        this: S,
-        num_remaining_unlocked: usize,
-    ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
-        let this_borrow = this.borrow();
-        let cache_entries = this_borrow._cache_entries();
-        let num_unlocked = this_borrow._num_unlocked(&cache_entries);
-        let num_overlimit = num_unlocked.saturating_sub(num_remaining_unlocked);
-        cache_entries
+    /// TODO This can probably be removed now since we have a new mechanism for enforcing a limit
+    // pub fn lock_all_unlocked_except_n_first<S: Borrow<Self> + Clone>(
+    //     this: S,
+    //     num_remaining_unlocked: usize,
+    // ) -> impl Iterator<Item = GuardImpl<M, V, H, S>> {
+    //     let this_borrow = this.borrow();
+    //     let cache_entries = this_borrow._cache_entries();
+    //     let num_unlocked = this_borrow._num_unlocked(&cache_entries);
+    //     let num_overlimit = num_unlocked.saturating_sub(num_remaining_unlocked);
+    //     cache_entries
+    //         .iter()
+    //         .filter_map(
+    //             |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+    //                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
+    //                 Err(_) => None,
+    //             },
+    //         )
+    //         .take(num_overlimit)
+    //         .collect::<Vec<_>>()
+    //         .into_iter()
+    // }
+
+    fn _lock_up_to_n_first_unlocked_entries<'a, S: Borrow<Self> + Clone>(
+        this: &S,
+        // TODO Without explicit 'a possible?
+        entries: &'a std::sync::MutexGuard<'a, M>,
+        num_entries: usize,
+    ) -> Vec<GuardImpl<M, V, H, S>> {
+        entries
             .iter()
             .filter_map(
-                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+                move |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
                     Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                     Err(_) => None,
                 },
             )
-            .take(num_overlimit)
-            .collect::<Vec<_>>()
-            .into_iter()
+            .take(num_entries)
+            .collect()
     }
 }
 
