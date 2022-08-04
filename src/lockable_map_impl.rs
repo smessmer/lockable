@@ -504,7 +504,14 @@ where
             .iter()
             .filter_map(
                 move |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
-                    Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
+                    Ok(guard) => {
+                        if guard.value.is_some() {
+                            Some(Self::_make_guard(this.clone(), key.clone(), guard))
+                        } else {
+                            // This can happen if an entry got deleted while we were waiting for the lock
+                            None
+                        }
+                    }
                     Err(_) => None,
                 },
             )
