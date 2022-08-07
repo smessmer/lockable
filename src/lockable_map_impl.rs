@@ -388,9 +388,6 @@ where
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: LockedMutexGuard<EntryValue<M::V>>) {
         let mut cache_entries = self._cache_entries();
-        let mutex: &Arc<tokio::sync::Mutex<EntryValue<M::V>>> = cache_entries
-            .get(key)
-            .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
         std::mem::drop(guard);
@@ -405,28 +402,39 @@ where
         // If there are any other Self::blocking_lock/async_lock/try_lock()
         // calls for this key already running and/ waiting for the mutex,
         // they will be unblocked now and their guard will be created.
-        // But since we still have the global mutex on self.cache_entries, currently no
+
+        // If the guard we dropped carried a value, keep the entry in the map.
+        // But it doesn't carry a value, clean up since the entry semantically
+        // doesn't exist in the map and was only created to have a place to put
+        // the mutex.
+        if !entry_carries_a_value {
+            Self::_delete_if_unlocked_and_nobody_waiting_for_lock(&mut cache_entries, key);
+        }
+    }
+
+    fn _delete_if_unlocked_and_nobody_waiting_for_lock<'a>(cache_entries: &mut std::sync::MutexGuard<'_, M>, key: &M::K) {
+        let mutex: &Arc<tokio::sync::Mutex<EntryValue<M::V>>> = cache_entries
+            .get(key)
+            .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
+        // If there are any other locks or any other tasks currently waiting in Self::blocking_lock/async_lock/try_lock,
+        // then Arc::strong_count() will be larger than one.
+        // But since we still have the global mutex on cache_entries, currently no
         // thread can newly call Self::blocking_lock/async_lock/try_lock() and create a
         // new clone of our Arc. Similarly, no other thread can enter Self::_unlock()
-        // and reduce the strong_count of the Arc. This means that if
+        // and reduce the strong_count of the Arc by dropping the guard. This means that if
         // Arc::strong_count() == 1, we know that there is no other thread with access
         // that could modify strong_count. We can clean up without race conditions.
-
         if Arc::strong_count(mutex) == 1 {
-            // If the guard we dropped carried a value, keep the entry in the map.
-            // But it doesn't carry a value, clean up since the entry semantically
-            // doesn't exist in the map and was only created to have a place to put
-            // the mutex.
-            if !entry_carries_a_value {
-                let remove_result = cache_entries.remove(key);
-                assert!(
-                    remove_result.is_some(),
-                    "We just got this entry above from the hash map, it cannot have vanished since then"
-                );
-            }
+            let remove_result = cache_entries.remove(key);
+            assert!(
+                remove_result.is_some(),
+                "We just got this entry above from the hash map, it cannot have vanished since then"
+            );
         } else {
-            // Another thread was currently waiting in a Self::blocking_lock/async_lock/try_lock call
+            // Another tasks was currently waiting in a Self::blocking_lock/async_lock/try_lock call
             // and will now get the lock. We shouldn't free the entry.
+            // All such waiting tasks will have to eventually call back into _delete_if_unlocked_and_nobody_waiting_for_lock
+            // to clean up if the entry they locked was None.
         }
     }
 
@@ -497,26 +505,46 @@ where
     fn _lock_up_to_n_first_unlocked_entries<'a, S: Borrow<Self> + Clone>(
         this: &S,
         // TODO Without explicit 'a possible?
-        entries: &'a std::sync::MutexGuard<'a, M>,
+        entries: &mut std::sync::MutexGuard<'a, M>,
         num_entries: usize,
     ) -> Vec<GuardImpl<M, V, H, S>> {
-        entries
-            .iter()
-            .filter_map(
-                move |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
-                    Ok(guard) => {
-                        if guard.value.is_some() {
-                            Some(Self::_make_guard(this.clone(), key.clone(), guard))
-                        } else {
-                            // This can happen if an entry got deleted while we were waiting for the lock
-                            None
-                        }
+        // let l = entries.len();
+        let mut result = Vec::new();
+        let mut to_delete = Vec::new();
+        for (key, mutex) in entries.iter() {
+            match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+                Ok(guard) => {
+                    if guard.value.is_some() {
+                        result.push(Self::_make_guard(this.clone(), key.clone(), guard))
+                    } else {
+                        // This can happen if the entry was deleted while we waited for the lock.
+                        // Because we have a Arc::clone of the mutex here, the _unlock() of that
+                        // deletion operation didn't actually delete the entry and we need
+                        // to give a chance for deletion now. We can't immediately delete it
+                        // because that requires a &mut borrow of entries and we currently have
+                        // a & borrow. But we can remember those keys and delete them further down.
+                        to_delete.push(key.clone());
                     }
-                    Err(_) => None,
-                },
-            )
-            .take(num_entries)
-            .collect()
+                }
+                Err(_) => {
+                    // A failed try_lock means we currently have another lock and we can rely on that one
+                    // calling _unlock and potentially deleting an item if it is None. So we don't need
+                    // to create a guard object here. Because we have a lock on `entries`, there are no
+                    // race conditions with that _unlock.
+                }
+            }
+            if result.len() >= num_entries {
+                break;
+            }
+        }
+        // Great, we either locked `num_entries` entries, or ran out of entries. Now let's delete the None
+        // entries we found and we can return our result. We still have a lock on `entries`, so we know
+        // that no new tasks can have entered Self::blocking_lock/async_lock/try_lock and tried to lock any
+        // of those keys.
+        for key in to_delete {
+            Self::_delete_if_unlocked_and_nobody_waiting_for_lock(entries, &key);
+        }
+        result
     }
 }
 
