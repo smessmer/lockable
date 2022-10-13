@@ -173,6 +173,13 @@ where
                             &mut cache_entries,
                             num_overlimit_entries,
                         );
+                        // TODO Add special case: If we could only lock 0 entries,
+                        //      we may want to still let the async_lock call succeed
+                        //      even though that exceeds the limit. Otherwise,
+                        //      we can get into deadlocks when the cache gets full
+                        //      and all threads/tasks that are holding locks also
+                        //      want more locks.
+
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the cache_entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
@@ -226,6 +233,13 @@ where
                             &mut cache_entries,
                             num_overlimit_entries,
                         );
+                        // TODO Add special case: If we could only lock 0 entries,
+                        //      we may want to still let the async_lock call succeed
+                        //      even though that exceeds the limit. Otherwise,
+                        //      we can get into deadlocks when the cache gets full
+                        //      and all threads/tasks that are holding locks also
+                        //      want more locks.
+
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the cache_entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
