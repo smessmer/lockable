@@ -412,7 +412,10 @@ where
         }
     }
 
-    fn _delete_if_unlocked_and_nobody_waiting_for_lock<'a>(cache_entries: &mut std::sync::MutexGuard<'_, M>, key: &M::K) {
+    fn _delete_if_unlocked_and_nobody_waiting_for_lock<'a>(
+        cache_entries: &mut std::sync::MutexGuard<'_, M>,
+        key: &M::K,
+    ) {
         let mutex: &Arc<tokio::sync::Mutex<EntryValue<M::V>>> = cache_entries
             .get(key)
             .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
