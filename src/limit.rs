@@ -37,8 +37,6 @@ where
         /// TODO Docs
         _p: PhantomData<P>,
         /// TODO Docs
-        _f: PhantomData<F>,
-        /// TODO Docs
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
@@ -73,7 +71,6 @@ where
             _v: PhantomData,
             _h: PhantomData,
             _p: PhantomData,
-            _f: PhantomData,
             _o: PhantomData,
         }
     }
