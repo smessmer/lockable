@@ -1,5 +1,4 @@
 use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -25,7 +24,6 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
     F: Future<Output = Result<(), E>>,
-    E: Error,
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> F,
 {
     /// TODO Docs

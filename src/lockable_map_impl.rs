@@ -1,7 +1,6 @@
 use anyhow::Result;
 use futures::stream::{FuturesUnordered, Stream};
 use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -145,7 +144,6 @@ where
     ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
     where
         S: Borrow<Self> + Clone,
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {
@@ -212,7 +210,6 @@ where
         limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
     ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
     where
-        E: Error,
         S: Borrow<Self> + Clone,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
@@ -288,7 +285,6 @@ where
         limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
     ) -> Result<GuardImpl<M, V, H, S>, E>
     where
-        E: Error,
         S: Borrow<Self> + Clone,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
@@ -308,7 +304,6 @@ where
     ) -> Result<GuardImpl<M, V, H, S>, E>
     where
         S: Borrow<Self> + Clone,
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {
@@ -328,7 +323,6 @@ where
     ) -> Result<Option<GuardImpl<M, V, H, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        E: Error,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
@@ -349,7 +343,6 @@ where
     ) -> Result<Option<GuardImpl<M, V, H, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {

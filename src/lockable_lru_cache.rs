@@ -2,7 +2,6 @@ use anyhow::Result;
 use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
@@ -261,7 +260,6 @@ where
         >,
     ) -> Result<LruGuard<'a, K, V>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -321,7 +319,6 @@ where
         >,
     ) -> Result<LruOwnedGuard<K, V>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
         ) -> Result<(), E>,
@@ -371,7 +368,6 @@ where
         >,
     ) -> Result<Option<LruGuard<'a, K, V>>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -428,7 +424,6 @@ where
         >,
     ) -> Result<Option<LruOwnedGuard<K, V>>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
         ) -> Result<(), E>,
@@ -453,7 +448,6 @@ where
         >,
     ) -> Result<Option<LruGuard<'a, K, V>>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
@@ -486,7 +480,6 @@ where
         >,
     ) -> Result<Option<LruOwnedGuard<K, V>>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
             Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
@@ -510,7 +503,6 @@ where
         >,
     ) -> Result<LruGuard<'a, K, V>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
@@ -542,7 +534,6 @@ where
         >,
     ) -> Result<LruOwnedGuard<K, V>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
             Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,

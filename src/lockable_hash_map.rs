@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
@@ -208,7 +207,6 @@ where
         >,
     ) -> Result<HashMapGuard<'_, K, V>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -261,7 +259,6 @@ where
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
     ) -> Result<HashMapOwnedGuard<K, V>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
         ) -> Result<(), E>,
@@ -311,7 +308,6 @@ where
         >,
     ) -> Result<Option<HashMapGuard<'_, K, V>>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -363,7 +359,6 @@ where
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
     ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
     where
-        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
         ) -> Result<(), E>,
@@ -388,7 +383,6 @@ where
         >,
     ) -> Result<Option<HashMapGuard<'a, K, V>>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
@@ -413,7 +407,6 @@ where
         limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
     ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
     {
@@ -436,7 +429,6 @@ where
         >,
     ) -> Result<HashMapGuard<'_, K, V>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
@@ -460,7 +452,6 @@ where
         limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
     ) -> Result<HashMapOwnedGuard<K, V>, E>
     where
-        E: Error,
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
     {
