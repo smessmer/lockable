@@ -27,7 +27,7 @@ where
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> F,
 {
     /// TODO Docs
-    Unbounded {
+    NoLimit {
         /// TODO Docs
         _m: PhantomData<M>,
         /// TODO Docs
@@ -42,7 +42,7 @@ where
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
-    Bounded {
+    SoftLimit {
         /// TODO Docs
         max_entries: NonZeroUsize,
         /// TODO Docs
@@ -66,8 +66,8 @@ where
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     /// TODO Docs
-    pub fn unbounded() -> Self {
-        Self::Unbounded {
+    pub fn no_limit() -> Self {
+        Self::NoLimit {
             _m: PhantomData,
             _v: PhantomData,
             _h: PhantomData,
@@ -88,7 +88,7 @@ where
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> Result<()>,
 {
     /// TODO Docs
-    Unbounded {
+    NoLimit {
         /// TODO Docs
         _m: PhantomData<M>,
         /// TODO Docs
@@ -101,7 +101,7 @@ where
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
-    Bounded {
+    SoftLimit {
         /// TODO Docs
         max_entries: NonZeroUsize,
         /// TODO Docs
@@ -117,8 +117,8 @@ where
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     /// TODO Docs
-    pub fn unbounded() -> Self {
-        Self::Unbounded {
+    pub fn no_limit() -> Self {
+        Self::NoLimit {
             _m: PhantomData,
             _v: PhantomData,
             _h: PhantomData,

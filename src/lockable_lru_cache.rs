@@ -112,15 +112,15 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let entry1 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
-/// let entry2 = cache.async_lock(5, AsyncLimit::unbounded()).await.unwrap();
+/// let entry1 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// let entry2 = cache.async_lock(5, AsyncLimit::no_limit()).await.unwrap();
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-/// // let entry3 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
+/// // let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
 ///
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
-/// let entry3 = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
+/// let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
 /// # });
 /// ```
 ///
@@ -132,21 +132,21 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
+///     let mut entry = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
 ///     entry.insert(String::from("Hello World"));
 /// }
 ///
 /// async fn remove_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap();
+///     let mut entry = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
 ///     entry.remove();
 /// }
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
 /// insert_entry(&cache).await;
-/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
+/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
 /// remove_entry(&cache).await;
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::unbounded()).await.unwrap().value());
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
 /// # });
 /// ```
 ///
@@ -161,7 +161,7 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// let cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::unbounded()).await.unwrap();
+/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await.unwrap();
 /// # });
 /// ```
 ///
@@ -236,15 +236,15 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// let cache = LockableLruCache::<i64, String>::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::unbounded()).unwrap();
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit()).unwrap();
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
+    /// // let guard3 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock<'a, OnEvictFn>(
@@ -294,15 +294,15 @@ where
     /// use std::sync::Arc;
     ///
     /// let cache = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
-    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::unbounded()).unwrap();
+    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap();
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
+    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock_owned<OnEvictFn>(
@@ -334,16 +334,16 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::unbounded()).unwrap();
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::unbounded()).unwrap();
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit()).unwrap();
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = cache.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_some());
     /// ```
     #[inline]
@@ -389,16 +389,16 @@ where
     /// use std::sync::Arc;
     ///
     /// let pool = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = pool.blocking_lock(4, SyncLimit::unbounded()).unwrap();
-    /// let guard2 = pool.blocking_lock(5, SyncLimit::unbounded()).unwrap();
+    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit()).unwrap();
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock(4, SyncLimit::unbounded()).unwrap();
+    /// let guard3 = pool.try_lock(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_some());
     /// ```
     #[inline]
@@ -618,36 +618,6 @@ where
 mod tests {
     use super::*;
     use crate::instantiate_lockable_tests;
-
-    impl<K, V> LockableLruCache<K, V>
-    where
-        K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-        V: Debug + 'static,
-    {
-        // TODO It would be nicer to implement a Fixture trait instead of creating a test api this way,
-        // but that requires GATs or associated type bounds and those aren't stabilized yet.
-        pub fn testapi_blocking_lock(&self, key: K) -> LruGuard<'_, K, V> {
-            self.blocking_lock(key, SyncLimit::unbounded()).unwrap()
-        }
-        pub fn testapi_blocking_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
-            self.blocking_lock_owned(key, SyncLimit::unbounded())
-                .unwrap()
-        }
-        pub fn testapi_try_lock(&self, key: K) -> Option<LruGuard<'_, K, V>> {
-            self.try_lock(key, SyncLimit::unbounded()).unwrap()
-        }
-        pub fn testapi_try_lock_owned(self: &Arc<Self>, key: K) -> Option<LruOwnedGuard<K, V>> {
-            self.try_lock_owned(key, SyncLimit::unbounded()).unwrap()
-        }
-        pub async fn testapi_async_lock(&self, key: K) -> LruGuard<'_, K, V> {
-            self.async_lock(key, AsyncLimit::unbounded()).await.unwrap()
-        }
-        pub async fn testapi_async_lock_owned(self: &Arc<Self>, key: K) -> LruOwnedGuard<K, V> {
-            self.async_lock_owned(key, AsyncLimit::unbounded())
-                .await
-                .unwrap()
-        }
-    }
 
     instantiate_lockable_tests!(LockableLruCache);
 }

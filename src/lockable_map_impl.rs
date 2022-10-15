@@ -149,11 +149,11 @@ where
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
         let mut cache_entries = match limit {
-            AsyncLimit::Unbounded { .. } => {
+            AsyncLimit::NoLimit { .. } => {
                 // do nothing
                 this.borrow()._cache_entries()
             }
-            AsyncLimit::Bounded {
+            AsyncLimit::SoftLimit {
                 max_entries,
                 on_evict,
             } => {
@@ -173,12 +173,18 @@ where
                             &mut cache_entries,
                             num_overlimit_entries,
                         );
-                        // TODO Add special case: If we could only lock 0 entries,
-                        //      we may want to still let the async_lock call succeed
-                        //      even though that exceeds the limit. Otherwise,
-                        //      we can get into deadlocks when the cache gets full
-                        //      and all threads/tasks that are holding locks also
-                        //      want more locks.
+
+                        // If we couldn't lock any entries to free their space up, then
+                        // all cache entries are currently locked. If we just waited
+                        // until we lock one, there would be a potential dead lock
+                        // if multiple threads hold locks and try to get more locks.
+                        // Let's avoid that deadlock and allow the current locking
+                        // request, even though it goes above the limit.
+                        // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
+                        if locked.len() == 0 {
+                            // TODO Test that this works, i.e. that the map still correctly works when it's full and doesn't deadlock (and same for the _load_or_insert_mutex_for_key_sync version)
+                            break cache_entries;
+                        }
 
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the cache_entries lock for that
@@ -209,11 +215,11 @@ where
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
         let mut cache_entries = match limit {
-            SyncLimit::Unbounded { .. } => {
+            SyncLimit::NoLimit { .. } => {
                 // do nothing
                 this.borrow()._cache_entries()
             }
-            SyncLimit::Bounded {
+            SyncLimit::SoftLimit {
                 max_entries,
                 on_evict,
             } => {
@@ -233,12 +239,17 @@ where
                             &mut cache_entries,
                             num_overlimit_entries,
                         );
-                        // TODO Add special case: If we could only lock 0 entries,
-                        //      we may want to still let the async_lock call succeed
-                        //      even though that exceeds the limit. Otherwise,
-                        //      we can get into deadlocks when the cache gets full
-                        //      and all threads/tasks that are holding locks also
-                        //      want more locks.
+
+                        // If we couldn't lock any entries to free their space up, then
+                        // all cache entries are currently locked. If we just waited
+                        // until we lock one, there would be a potential dead lock
+                        // if multiple threads hold locks and try to get more locks.
+                        // Let's avoid that deadlock and allow the current locking
+                        // request, even though it goes above the limit.
+                        // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
+                        if locked.len() == 0 {
+                            break cache_entries;
+                        }
 
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the cache_entries lock for that
@@ -273,7 +284,7 @@ where
         this: S,
         key: M::K,
     ) -> Result<GuardImpl<M, V, H, S>> {
-        Self::blocking_lock(this, key, SyncLimit::unbounded())
+        Self::blocking_lock(this, key, SyncLimit::no_limit())
     }
 
     #[inline]
@@ -300,7 +311,7 @@ where
         this: S,
         key: M::K,
     ) -> Result<GuardImpl<M, V, H, S>> {
-        Self::async_lock(this, key, AsyncLimit::unbounded()).await
+        Self::async_lock(this, key, AsyncLimit::no_limit()).await
     }
 
     #[inline]
@@ -525,7 +536,6 @@ where
         entries: &mut std::sync::MutexGuard<'a, M>,
         num_entries: usize,
     ) -> Vec<GuardImpl<M, V, H, S>> {
-        // let l = entries.len();
         let mut result = Vec::new();
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
