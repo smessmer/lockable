@@ -1,9 +1,10 @@
-use anyhow::Result;
 use std::borrow::{Borrow, BorrowMut};
+use std::error::Error;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
+use crate::error::Never;
 use crate::guard::GuardImpl;
 use crate::hooks::Hooks;
 use crate::lockable_map_impl::{FromInto, LockableMapImpl};
@@ -17,13 +18,14 @@ use crate::map_like::ArcMutexMapLike;
 // Rust doesn't really support that yet.
 
 /// TODO Docs
-pub enum AsyncLimit<M, V, H, P, F, OnEvictFn>
+pub enum AsyncLimit<M, V, H, P, E, F, OnEvictFn>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
-    F: Future<Output = Result<()>>,
+    F: Future<Output = Result<(), E>>,
+    E: Error,
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> F,
 {
     /// TODO Docs
@@ -56,8 +58,9 @@ impl<M, V, H, P>
         V,
         H,
         P,
-        std::future::Ready<Result<()>>,
-        fn(Vec<GuardImpl<M, V, H, P>>) -> std::future::Ready<Result<()>>,
+        Never,
+        std::future::Ready<Result<(), Never>>,
+        fn(Vec<GuardImpl<M, V, H, P>>) -> std::future::Ready<Result<(), Never>>,
     >
 where
     M: ArcMutexMapLike,
@@ -79,13 +82,13 @@ where
 }
 
 /// TODO Docs
-pub enum SyncLimit<M, V, H, P, OnEvictFn>
+pub enum SyncLimit<M, V, H, P, E, OnEvictFn>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
-    OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> Result<()>,
+    OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> Result<(), E>,
 {
     /// TODO Docs
     NoLimit {
@@ -109,7 +112,7 @@ where
     },
 }
 
-impl<M, V, H, P> SyncLimit<M, V, H, P, fn(Vec<GuardImpl<M, V, H, P>>) -> Result<()>>
+impl<M, V, H, P> SyncLimit<M, V, H, P, Never, fn(Vec<GuardImpl<M, V, H, P>>) -> Result<(), Never>>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,

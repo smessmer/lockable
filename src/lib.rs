@@ -19,6 +19,7 @@ mod lockable_hash_map;
 #[cfg(feature = "lru")]
 mod lockable_lru_cache;
 
+pub use error::{InfallibleUnwrap, Never};
 pub use guard::GuardImpl;
 pub use limit::{AsyncLimit, SyncLimit};
 pub use lockable_hash_map::{HashMapGuard, HashMapOwnedGuard, LockableHashMap};

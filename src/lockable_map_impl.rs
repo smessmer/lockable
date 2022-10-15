@@ -1,6 +1,7 @@
 use anyhow::Result;
 use futures::stream::{FuturesUnordered, Stream};
 use std::borrow::{Borrow, BorrowMut};
+use std::error::Error;
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -137,14 +138,15 @@ where
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
     }
 
-    async fn _load_or_insert_mutex_for_key_async<S, F, OnEvictFn>(
+    async fn _load_or_insert_mutex_for_key_async<S, E, F, OnEvictFn>(
         this: &S,
         key: &M::K,
-        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
-    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>>
+        limit: AsyncLimit<M, V, H, S, E, F, OnEvictFn>,
+    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
     where
         S: Borrow<Self> + Clone,
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
@@ -204,14 +206,15 @@ where
         Ok(Arc::clone(entry))
     }
 
-    fn _load_or_insert_mutex_for_key_sync<S, OnEvictFn>(
+    fn _load_or_insert_mutex_for_key_sync<S, E, OnEvictFn>(
         this: &S,
         key: &M::K,
-        limit: SyncLimit<M, V, H, S, OnEvictFn>,
-    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>>
+        limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
+    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
     where
+        E: Error,
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
         let mut cache_entries = match limit {
@@ -278,24 +281,16 @@ where
         GuardImpl::new(this, key.clone(), guard)
     }
 
-    // TODO Remove
     #[inline]
-    pub fn _test_blocking_lock<S: Borrow<Self> + Clone>(
+    pub fn blocking_lock<S, E, OnEvictFn>(
         this: S,
         key: M::K,
-    ) -> Result<GuardImpl<M, V, H, S>> {
-        Self::blocking_lock(this, key, SyncLimit::no_limit())
-    }
-
-    #[inline]
-    pub fn blocking_lock<S, OnEvictFn>(
-        this: S,
-        key: M::K,
-        limit: SyncLimit<M, V, H, S, OnEvictFn>,
-    ) -> Result<GuardImpl<M, V, H, S>>
+        limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
+    ) -> Result<GuardImpl<M, V, H, S>, E>
     where
+        E: Error,
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -305,24 +300,16 @@ where
         Ok(Self::_make_guard(this, key, guard))
     }
 
-    // TODO Remove
     #[inline]
-    pub async fn _test_async_lock<S: Borrow<Self> + Clone>(
+    pub async fn async_lock<S, E, F, OnEvictFn>(
         this: S,
         key: M::K,
-    ) -> Result<GuardImpl<M, V, H, S>> {
-        Self::async_lock(this, key, AsyncLimit::no_limit()).await
-    }
-
-    #[inline]
-    pub async fn async_lock<S, F, OnEvictFn>(
-        this: S,
-        key: M::K,
-        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
-    ) -> Result<GuardImpl<M, V, H, S>>
+        limit: AsyncLimit<M, V, H, S, E, F, OnEvictFn>,
+    ) -> Result<GuardImpl<M, V, H, S>, E>
     where
         S: Borrow<Self> + Clone,
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
@@ -334,14 +321,15 @@ where
     }
 
     #[inline]
-    pub fn try_lock<S, OnEvictFn>(
+    pub fn try_lock<S, E, OnEvictFn>(
         this: S,
         key: M::K,
-        limit: SyncLimit<M, V, H, S, OnEvictFn>,
-    ) -> Result<Option<GuardImpl<M, V, H, S>>>
+        limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
+    ) -> Result<Option<GuardImpl<M, V, H, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<()>,
+        E: Error,
+        OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -354,14 +342,15 @@ where
     }
 
     #[inline]
-    pub async fn try_lock_async<S, F, OnEvictFn>(
+    pub async fn try_lock_async<S, E, F, OnEvictFn>(
         this: S,
         key: M::K,
-        limit: AsyncLimit<M, V, H, S, F, OnEvictFn>,
-    ) -> Result<Option<GuardImpl<M, V, H, S>>>
+        limit: AsyncLimit<M, V, H, S, E, F, OnEvictFn>,
+    ) -> Result<Option<GuardImpl<M, V, H, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<GuardImpl<M, V, H, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;

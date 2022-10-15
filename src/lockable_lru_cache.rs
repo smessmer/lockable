@@ -2,6 +2,7 @@ use anyhow::Result;
 use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::{Borrow, BorrowMut};
+use std::error::Error;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
@@ -247,7 +248,7 @@ where
     /// let guard3 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
     /// ```
     #[inline]
-    pub fn blocking_lock<'a, OnEvictFn>(
+    pub fn blocking_lock<'a, E, OnEvictFn>(
         &'a self,
         key: K,
         limit: SyncLimit<
@@ -255,10 +256,12 @@ where
             V,
             LruCacheHooks,
             &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            E,
             OnEvictFn,
         >,
-    ) -> Result<LruGuard<'a, K, V>>
+    ) -> Result<LruGuard<'a, K, V>, E>
     where
+        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -268,7 +271,7 @@ where
                     &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
                 >,
             >,
-        ) -> Result<()>,
+        ) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(&self.map_impl, key, limit)
     }
@@ -305,15 +308,23 @@ where
     /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
     /// ```
     #[inline]
-    pub fn blocking_lock_owned<OnEvictFn>(
+    pub fn blocking_lock_owned<E, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: SyncLimit<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>, OnEvictFn>,
-    ) -> Result<LruOwnedGuard<K, V>>
+        limit: SyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            Arc<LockableLruCache<K, V>>,
+            E,
+            OnEvictFn,
+        >,
+    ) -> Result<LruOwnedGuard<K, V>, E>
     where
+        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
-        ) -> Result<()>,
+        ) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
     }
@@ -347,7 +358,7 @@ where
     /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock<'a, OnEvictFn>(
+    pub fn try_lock<'a, E, OnEvictFn>(
         &'a self,
         key: K,
         limit: SyncLimit<
@@ -355,10 +366,12 @@ where
             V,
             LruCacheHooks,
             &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            E,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruGuard<'a, K, V>>>
+    ) -> Result<Option<LruGuard<'a, K, V>>, E>
     where
+        E: Error,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -368,7 +381,7 @@ where
                     &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
                 >,
             >,
-        ) -> Result<()>,
+        ) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(&self.map_impl, key, limit)
     }
@@ -402,15 +415,23 @@ where
     /// assert!(guard3.is_some());
     /// ```
     #[inline]
-    pub fn try_lock_owned<OnEvictFn>(
+    pub fn try_lock_owned<E, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: SyncLimit<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>, OnEvictFn>,
-    ) -> Result<Option<LruOwnedGuard<K, V>>>
+        limit: SyncLimit<
+            MapImpl<K, V>,
+            V,
+            LruCacheHooks,
+            Arc<LockableLruCache<K, V>>,
+            E,
+            OnEvictFn,
+        >,
+    ) -> Result<Option<LruOwnedGuard<K, V>>, E>
     where
+        E: Error,
         OnEvictFn: Fn(
             Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
-        ) -> Result<()>,
+        ) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
     }
@@ -418,7 +439,7 @@ where
     /// TODO Docs
     /// TODO Test, we're only testing try_lock so far, not try_lock_async
     #[inline]
-    pub async fn try_lock_async<'a, F, OnEvictFn>(
+    pub async fn try_lock_async<'a, E, F, OnEvictFn>(
         &'a self,
         key: K,
         limit: AsyncLimit<
@@ -426,12 +447,14 @@ where
             V,
             LruCacheHooks,
             &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            E,
             F,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruGuard<'a, K, V>>>
+    ) -> Result<Option<LruGuard<'a, K, V>>, E>
     where
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -449,7 +472,7 @@ where
     /// TODO Docs
     /// TODO Test, we're only testing try_lock_owned so far, not try_lock_owned_async
     #[inline]
-    pub async fn try_lock_owned_async<F, OnEvictFn>(
+    pub async fn try_lock_owned_async<E, F, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
         limit: AsyncLimit<
@@ -457,12 +480,14 @@ where
             V,
             LruCacheHooks,
             Arc<LockableLruCache<K, V>>,
+            E,
             F,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruOwnedGuard<K, V>>>
+    ) -> Result<Option<LruOwnedGuard<K, V>>, E>
     where
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn:
             Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
     {
@@ -471,7 +496,7 @@ where
 
     /// TODO Docs
     #[inline]
-    pub async fn async_lock<'a, F, OnEvictFn>(
+    pub async fn async_lock<'a, E, F, OnEvictFn>(
         &'a self,
         key: K,
         limit: AsyncLimit<
@@ -479,12 +504,14 @@ where
             V,
             LruCacheHooks,
             &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            E,
             F,
             OnEvictFn,
         >,
-    ) -> Result<LruGuard<'a, K, V>>
+    ) -> Result<LruGuard<'a, K, V>, E>
     where
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
                 GuardImpl<
@@ -501,7 +528,7 @@ where
 
     /// TODO Docs
     #[inline]
-    pub async fn async_lock_owned<F, OnEvictFn>(
+    pub async fn async_lock_owned<E, F, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
         limit: AsyncLimit<
@@ -509,12 +536,14 @@ where
             V,
             LruCacheHooks,
             Arc<LockableLruCache<K, V>>,
+            E,
             F,
             OnEvictFn,
         >,
-    ) -> Result<LruOwnedGuard<K, V>>
+    ) -> Result<LruOwnedGuard<K, V>, E>
     where
-        F: Future<Output = Result<()>>,
+        E: Error,
+        F: Future<Output = Result<(), E>>,
         OnEvictFn:
             Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
     {
