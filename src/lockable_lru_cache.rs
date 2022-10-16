@@ -40,7 +40,6 @@ where
         self.get_or_insert(key.clone(), || {
             Arc::new(Mutex::new(EntryValue { value: None }))
         })
-        .expect("Cache capacity is zero. This can't happen since we created an unbounded cache")
     }
 
     fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>> {
