@@ -38,7 +38,20 @@ pub trait InfallibleUnwrap<T> {
 
 impl<T> InfallibleUnwrap<T> for std::result::Result<T, Never> {
     fn infallible_unwrap(self) -> T {
-        // TODO Test
         self.unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_infallible_unwrap() {
+        let result: Result<i64, Never> = Ok(4);
+        assert_eq!(4, result.infallible_unwrap());
+
+        let result: Result<(), Never> = Ok(());
+        assert_eq!((), result.infallible_unwrap());
     }
 }
