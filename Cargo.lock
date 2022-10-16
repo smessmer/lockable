@@ -45,6 +45,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fortify"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09fd82d3b82d9c68b1731127375e34de21f2089c9044428a83f19f6359bec45d"
+dependencies = [
+ "fortify_derive",
+]
+
+[[package]]
+name = "fortify_derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29323146124d7cd5e16defd480ef55246a8614a4bc1212921a59274358dfe3b8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -174,10 +194,12 @@ version = "0.0.2"
 dependencies = [
  "anyhow",
  "derive_more",
+ "fortify",
  "futures",
  "log",
  "lru",
  "owning_ref_lockable",
+ "rental",
  "thiserror",
  "tokio",
 ]
@@ -259,6 +281,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "632d02bff7f874a36f33ea8bb416cd484b90cc66c1194b1a1110d067a7013f58"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rental"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc89fe2acac36d212474d138aaf939c04a82df5b61d07011571ebce5aef81f2e"
+dependencies = [
+ "rental-impl",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "rental-impl"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "475e68978dc5b743f2f40d8e0a8fdc83f1c5e78cbf4b8fa5e74e73beebc340de"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

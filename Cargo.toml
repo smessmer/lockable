@@ -24,6 +24,8 @@ owning_ref_lockable = "^0.4.2"
 thiserror = "^1.0.30"
 tokio = {version = "^1.17.0", features = ["sync", "time", "rt"]}
 derive_more = "^0.99.17"
+fortify = "^0.4.1"
+rental = "0.5.6"
 
 [dev-dependencies]
 tokio = {version = "^1.17.0", features = ["sync", "time", "macros", "rt-multi-thread"]}

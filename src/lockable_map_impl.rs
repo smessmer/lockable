@@ -8,12 +8,13 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use tokio::sync::OwnedMutexGuard;
 
 use super::guard::GuardImpl;
 use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
-use crate::utils::locked_mutex_guard::LockedMutexGuard;
+// use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
 pub trait FromInto<V> {
     fn fi_from(v: V) -> Self;
@@ -272,7 +273,7 @@ where
     fn _make_guard<S: Borrow<Self>>(
         this: S,
         key: M::K,
-        guard: LockedMutexGuard<'static, EntryValue<M::V>>, // TODO 'static needed?
+        guard: OwnedMutexGuard<EntryValue<M::V>>,
     ) -> GuardImpl<M, V, H, S> {
         this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         GuardImpl::new(this, key.clone(), guard)
@@ -292,7 +293,14 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the thread until the mutex for this key is acquired.
 
-        let guard = LockedMutexGuard::blocking_lock(mutex);
+        // TODO Switch to tokio::sync::Mutex::blocking_lock_owned if it gets implemented, see https://github.com/tokio-rs/tokio/issues/5109
+        let guard = match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => runtime.block_on(mutex.lock_owned()),
+            Err(_) => tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(mutex.lock_owned()),
+        };
+
         Ok(Self::_make_guard(this, key, guard))
     }
 
@@ -311,7 +319,7 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the task until the mutex for this key is acquired.
 
-        let guard = LockedMutexGuard::async_lock(mutex).await;
+        let guard = mutex.lock_owned().await;
         Ok(Self::_make_guard(this, key, guard))
     }
 
@@ -329,7 +337,7 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
 
-        match LockedMutexGuard::try_lock(mutex) {
+        match mutex.try_lock_owned() {
             Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
             Err(_) => Ok(None),
         }
@@ -350,7 +358,7 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
 
-        match LockedMutexGuard::try_lock(mutex) {
+        match mutex.try_lock_owned() {
             Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
             Err(_) => Ok(None),
         }
@@ -363,12 +371,10 @@ where
         let cache_entries = this.borrow()._cache_entries();
         cache_entries
             .iter()
-            .filter_map(
-                |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
-                    Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
-                    Err(_) => None,
-                },
-            )
+            .filter_map(|(key, mutex)| match Arc::clone(mutex).try_lock_owned() {
+                Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
+                Err(_) => None,
+            })
             .collect::<Vec<_>>()
             .into_iter()
     }
@@ -385,7 +391,7 @@ where
                 let key = key.clone();
                 let mutex = Arc::clone(mutex);
                 async move {
-                    let guard = LockedMutexGuard::async_lock(mutex).await;
+                    let guard = mutex.lock_owned().await;
                     Self::_make_guard(this, key, guard)
                 }
             })
@@ -393,7 +399,7 @@ where
         cache_entries
     }
 
-    pub(super) fn _unlock(&self, key: &M::K, mut guard: LockedMutexGuard<EntryValue<M::V>>) {
+    pub(super) fn _unlock(&self, key: &M::K, mut guard: OwnedMutexGuard<EntryValue<M::V>>) {
         let mut cache_entries = self._cache_entries();
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
@@ -521,7 +527,7 @@ where
         let mut result = Vec::new();
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
-            match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+            match Arc::clone(mutex).try_lock_owned() {
                 Ok(guard) => {
                     if guard.value.is_some() {
                         result.push(Self::_make_guard(this.clone(), key.clone(), guard))

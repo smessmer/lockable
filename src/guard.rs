@@ -1,12 +1,13 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
+use tokio::sync::OwnedMutexGuard;
 
 use super::error::TryInsertError;
 use super::hooks::Hooks;
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
-use crate::utils::locked_mutex_guard::LockedMutexGuard;
+// use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
@@ -20,7 +21,7 @@ where
     pool: P,
     key: M::K,
     // Invariant: Is always Some(LockedMutexGuard) unless in the middle of destruction
-    guard: Option<LockedMutexGuard<'static, EntryValue<M::V>>>, // TODO Is 'static needed? Here and in other places for LockedMutexGuard.
+    guard: Option<OwnedMutexGuard<EntryValue<M::V>>>,
     _hooks: PhantomData<H>,
     _v: PhantomData<V>,
 }
@@ -32,11 +33,7 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    pub(super) fn new(
-        pool: P,
-        key: M::K,
-        guard: LockedMutexGuard<'static, EntryValue<M::V>>,
-    ) -> Self {
+    pub(super) fn new(pool: P, key: M::K, guard: OwnedMutexGuard<EntryValue<M::V>>) -> Self {
         Self {
             pool,
             key,
@@ -47,14 +44,14 @@ where
     }
 
     #[inline]
-    fn _guard(&self) -> &LockedMutexGuard<EntryValue<M::V>> {
+    fn _guard(&self) -> &OwnedMutexGuard<EntryValue<M::V>> {
         self.guard
             .as_ref()
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
     #[inline]
-    fn _guard_mut(&mut self) -> &mut LockedMutexGuard<'static, EntryValue<M::V>> {
+    fn _guard_mut(&mut self) -> &mut OwnedMutexGuard<EntryValue<M::V>> {
         self.guard
             .as_mut()
             .expect("The self.guard field must always be set unless this was already destructed")
