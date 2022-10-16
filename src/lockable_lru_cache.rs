@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
-use super::guard::GuardImpl;
+use super::guard::Guard;
 use super::hooks::Hooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
@@ -63,7 +63,7 @@ pub struct CacheEntry<V> {
     last_unlocked: Instant,
 }
 
-// Borrow and BorrowMut are used to allow GuardImpl to offer an API to read/write V while
+// Borrow and BorrowMut are used to allow Guard to offer an API to read/write V while
 // the cache actually stores values as CacheEntry<V>
 impl<V> Borrow<V> for CacheEntry<V> {
     fn borrow(&self) -> &V {
@@ -76,7 +76,7 @@ impl<V> BorrowMut<V> for CacheEntry<V> {
     }
 }
 
-// FromInto is used to allow GuardImpl to offer an API to insert V values while
+// FromInto is used to allow Guard to offer an API to insert V values while
 // the cache actually stores values as CacheEntry<V>
 impl<V> FromInto<V> for CacheEntry<V> {
     fn fi_from(value: V) -> CacheEntry<V> {
@@ -261,7 +261,7 @@ where
     where
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     LruCacheHooks,
@@ -319,7 +319,7 @@ where
     ) -> Result<LruOwnedGuard<K, V>, E>
     where
         OnEvictFn: Fn(
-            Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
+            Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
         ) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
@@ -369,7 +369,7 @@ where
     where
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     LruCacheHooks,
@@ -424,7 +424,7 @@ where
     ) -> Result<Option<LruOwnedGuard<K, V>>, E>
     where
         OnEvictFn: Fn(
-            Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
+            Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
         ) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
@@ -450,7 +450,7 @@ where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     LruCacheHooks,
@@ -481,7 +481,7 @@ where
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
-            Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
+            Fn(Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
     {
         LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
@@ -505,7 +505,7 @@ where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     LruCacheHooks,
@@ -535,7 +535,7 @@ where
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
-            Fn(Vec<GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
+            Fn(Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>) -> F,
     {
         LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }
@@ -603,8 +603,8 @@ where
 /// or [LockableLruCache::try_lock] and its lifetime is bound to the lifetime
 /// of the [LockableLruCache].
 ///
-/// See the documentation of [GuardImpl] for methods.
-pub type LruGuard<'a, K, V> = GuardImpl<
+/// See the documentation of [Guard] for methods.
+pub type LruGuard<'a, K, V> = Guard<
     MapImpl<K, V>,
     V,
     LruCacheHooks,
@@ -616,9 +616,9 @@ pub type LruGuard<'a, K, V> = GuardImpl<
 /// or [LockableLruCache::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableLruCache]
 /// within its [Arc].
 ///
-/// See the documentation of [GuardImpl] for methods.
+/// See the documentation of [Guard] for methods.
 pub type LruOwnedGuard<K, V> =
-    GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
+    Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.

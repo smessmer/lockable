@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::guard::GuardImpl;
+use super::guard::Guard;
 use super::hooks::NoopHooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
@@ -209,7 +209,7 @@ where
     where
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     NoopHooks,
@@ -260,7 +260,7 @@ where
     ) -> Result<HashMapOwnedGuard<K, V>, E>
     where
         OnEvictFn: Fn(
-            Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
+            Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
         ) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
@@ -310,7 +310,7 @@ where
     where
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     NoopHooks,
@@ -360,7 +360,7 @@ where
     ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
     where
         OnEvictFn: Fn(
-            Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
+            Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
         ) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
@@ -386,7 +386,7 @@ where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     NoopHooks,
@@ -408,7 +408,7 @@ where
     ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
+        OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
     {
         LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
@@ -432,7 +432,7 @@ where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
             Vec<
-                GuardImpl<
+                Guard<
                     MapImpl<K, V>,
                     V,
                     NoopHooks,
@@ -453,7 +453,7 @@ where
     ) -> Result<HashMapOwnedGuard<K, V>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
+        OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
     {
         LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }
@@ -488,18 +488,18 @@ where
 /// or [LockableHashMap::try_lock] and its lifetime is bound to the lifetime
 /// of the [LockableHashMap].
 ///
-/// See the documentation of [GuardImpl] for methods.
+/// See the documentation of [Guard] for methods.
 pub type HashMapGuard<'a, K, V> =
-    GuardImpl<MapImpl<K, V>, V, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>>;
+    Guard<MapImpl<K, V>, V, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>>;
 
 /// A owning guard holding a lock for an entry in a [LockableHashMap].
 /// This guard is created via [LockableHashMap::blocking_lock_owned], [LockableHashMap::async_lock_owned]
 /// or [LockableHashMap::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableHashMap]
 /// within its [Arc].
 ///
-/// See the documentation of [GuardImpl] for methods.
+/// See the documentation of [Guard] for methods.
 pub type HashMapOwnedGuard<K, V> =
-    GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+    Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.

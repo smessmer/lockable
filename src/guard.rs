@@ -2,15 +2,15 @@ use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 use tokio::sync::OwnedMutexGuard;
+use thiserror::Error;
 
-use super::error::TryInsertError;
 use super::hooks::Hooks;
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
-pub struct GuardImpl<M, V, H, P>
+pub struct Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -25,7 +25,7 @@ where
     _v: PhantomData<V>,
 }
 
-impl<'a, M, V, H, P> GuardImpl<M, V, H, P>
+impl<'a, M, V, H, P> Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -177,7 +177,7 @@ where
     }
 }
 
-impl<M, V, H, P> Drop for GuardImpl<M, V, H, P>
+impl<M, V, H, P> Drop for Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -193,7 +193,7 @@ where
     }
 }
 
-impl<M, V, H, P> Debug for GuardImpl<M, V, H, P>
+impl<M, V, H, P> Debug for Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -201,6 +201,17 @@ where
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GuardImpl({:?})", self.key)
+        write!(f, "Guard({:?})", self.key)
     }
+}
+
+/// This error is thrown by [Guard::try_insert] if the entry already exists
+#[derive(Error, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum TryInsertError<V> {
+    /// The entry couldn't be inserted because it already exists
+    #[error("The entry couldn't be inserted because it already exists")]
+    AlreadyExists {
+        /// The value that was attempted to be inserted
+        value: V,
+    },
 }

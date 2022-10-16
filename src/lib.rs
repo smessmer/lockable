@@ -4,7 +4,7 @@
 
 #![deny(missing_docs)]
 
-mod error;
+mod never;
 mod guard;
 mod hooks;
 mod limit;
@@ -18,8 +18,8 @@ mod lockable_hash_map;
 #[cfg(feature = "lru")]
 mod lockable_lru_cache;
 
-pub use error::{InfallibleUnwrap, Never};
-pub use guard::GuardImpl;
+pub use never::{InfallibleUnwrap, Never};
+pub use guard::Guard;
 pub use limit::{AsyncLimit, SyncLimit};
 pub use lockable_hash_map::{HashMapGuard, HashMapOwnedGuard, LockableHashMap};
 #[cfg(feature = "lru")]
