@@ -272,7 +272,7 @@ where
     fn _make_guard<S: Borrow<Self>>(
         this: S,
         key: M::K,
-        guard: LockedMutexGuard<EntryValue<M::V>>,
+        guard: LockedMutexGuard<'static, EntryValue<M::V>>, // TODO 'static needed?
     ) -> GuardImpl<M, V, H, S> {
         this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         GuardImpl::new(this, key.clone(), guard)

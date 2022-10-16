@@ -20,7 +20,7 @@ where
     pool: P,
     key: M::K,
     // Invariant: Is always Some(LockedMutexGuard) unless in the middle of destruction
-    guard: Option<LockedMutexGuard<EntryValue<M::V>>>,
+    guard: Option<LockedMutexGuard<'static, EntryValue<M::V>>>, // TODO Is 'static needed? Here and in other places for LockedMutexGuard.
     _hooks: PhantomData<H>,
     _v: PhantomData<V>,
 }
@@ -32,7 +32,7 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    pub(super) fn new(pool: P, key: M::K, guard: LockedMutexGuard<EntryValue<M::V>>) -> Self {
+    pub(super) fn new(pool: P, key: M::K, guard: LockedMutexGuard<'static, EntryValue<M::V>>) -> Self {
         Self {
             pool,
             key,
@@ -50,7 +50,7 @@ where
     }
 
     #[inline]
-    fn _guard_mut(&mut self) -> &mut LockedMutexGuard<EntryValue<M::V>> {
+    fn _guard_mut(&mut self) -> &mut LockedMutexGuard<'static, EntryValue<M::V>> {
         self.guard
             .as_mut()
             .expect("The self.guard field must always be set unless this was already destructed")
