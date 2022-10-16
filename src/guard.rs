@@ -32,7 +32,11 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    pub(super) fn new(pool: P, key: M::K, guard: LockedMutexGuard<'static, EntryValue<M::V>>) -> Self {
+    pub(super) fn new(
+        pool: P,
+        key: M::K,
+        guard: LockedMutexGuard<'static, EntryValue<M::V>>,
+    ) -> Self {
         Self {
             pool,
             key,

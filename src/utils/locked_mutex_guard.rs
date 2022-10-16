@@ -1,11 +1,11 @@
 use owning_ref_lockable::OwningHandle;
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::fmt;
 use tokio::sync::{Mutex, MutexGuard, TryLockError};
 
 /// A LockedMutexGuard carries an Arc<Mutex<T>> together with a MutexGuard locking that Data.
-/// 
+///
 /// The implementation is based on a [tokio::sync::Mutex] and locking behavior matches the behavior
 /// of that mutex.
 pub struct LockedMutexGuard<'a, T: 'a> {
@@ -14,7 +14,7 @@ pub struct LockedMutexGuard<'a, T: 'a> {
 
 impl<'a, T: 'a> LockedMutexGuard<'a, T> {
     /// Lock the given mutex and return a [LockedMutexGuard] pointing to the data behind the mutex.
-    /// 
+    ///
     /// See [tokio::sync::Mutex::blocking_lock] for behavioral details.
     pub fn blocking_lock(mutex: Arc<Mutex<T>>) -> Self {
         let mutex_and_guard = OwningHandle::new_with_fn(mutex, |mutex: *const Mutex<T>| {
@@ -25,7 +25,7 @@ impl<'a, T: 'a> LockedMutexGuard<'a, T> {
     }
 
     /// Lock the given mutex and return a [LockedMutexGuard] pointing to the data behind the mutex.
-    /// 
+    ///
     /// See [tokio::sync::Mutex::lock] for behavioral details.
     pub async fn async_lock(mutex: Arc<Mutex<T>>) -> LockedMutexGuard<'a, T> {
         let mutex_and_guard = OwningHandle::new_with_async_fn(mutex, |mutex: *const Mutex<T>| {
@@ -37,7 +37,7 @@ impl<'a, T: 'a> LockedMutexGuard<'a, T> {
     }
 
     /// Try to lock the given mutex and return an [Ok] of [LockedMutexGuard] if successful, and an [Err] of [TryLockError] if unsuccessful because it is already locked.
-    /// 
+    ///
     /// See [tokio::sync::Mutex::try_lock] for behavioral details.
     pub fn try_lock(mutex: Arc<Mutex<T>>) -> Result<Self, TryLockError> {
         let mutex_and_guard = OwningHandle::try_new(mutex, |mutex: *const Mutex<T>| {
@@ -62,14 +62,16 @@ impl<'a, T> DerefMut for LockedMutexGuard<'a, T> {
     }
 }
 
-impl <'a, T> fmt::Debug for LockedMutexGuard<'a, T> where T: fmt::Debug {
+impl<'a, T> fmt::Debug for LockedMutexGuard<'a, T>
+where
+    T: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("LockedMutexGuard")
             .field(self.deref())
             .finish()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
