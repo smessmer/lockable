@@ -1,8 +1,8 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
-use tokio::sync::OwnedMutexGuard;
 use thiserror::Error;
+use tokio::sync::OwnedMutexGuard;
 
 use super::hooks::Hooks;
 use super::lockable_map_impl::{FromInto, LockableMapImpl};

@@ -604,12 +604,8 @@ where
 /// of the [LockableLruCache].
 ///
 /// See the documentation of [Guard] for methods.
-pub type LruGuard<'a, K, V> = Guard<
-    MapImpl<K, V>,
-    V,
-    LruCacheHooks,
-    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
->;
+pub type LruGuard<'a, K, V> =
+    Guard<MapImpl<K, V>, V, LruCacheHooks, &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>>;
 
 /// A owning guard holding a lock for an entry in a [LockableLruCache].
 /// This guard is created via [LockableLruCache::blocking_lock_owned], [LockableLruCache::async_lock_owned]
@@ -617,8 +613,7 @@ pub type LruGuard<'a, K, V> = Guard<
 /// within its [Arc].
 ///
 /// See the documentation of [Guard] for methods.
-pub type LruOwnedGuard<K, V> =
-    Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
+pub type LruOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.

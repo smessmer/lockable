@@ -498,8 +498,7 @@ pub type HashMapGuard<'a, K, V> =
 /// within its [Arc].
 ///
 /// See the documentation of [Guard] for methods.
-pub type HashMapOwnedGuard<K, V> =
-    Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+pub type HashMapOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
