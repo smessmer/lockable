@@ -21,7 +21,8 @@ futures = "^0.3.21"
 log = "^0.4.17"
 lru = {version = "^0.7.5", optional = true}
 thiserror = "^1.0.30"
-tokio = {version = "^1.17.0", features = ["sync", "time", "rt"]}
+# TODO If we remove the hack to create a runtime in blocking_lock, then we don't need the `rt-multi-thread` feature anymore, `rt` should be enough.
+tokio = {version = "^1.17.0", features = ["sync", "time", "rt-multi-thread"]}
 derive_more = "^0.99.17"
 
 [dev-dependencies]
