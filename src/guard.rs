@@ -7,7 +7,6 @@ use super::error::TryInsertError;
 use super::hooks::Hooks;
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
-// use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
@@ -18,9 +17,9 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    pool: P,
+    map: P,
     key: M::K,
-    // Invariant: Is always Some(LockedMutexGuard) unless in the middle of destruction
+    // Invariant: Is always Some(OwnedMutexGuard) unless in the middle of destruction
     guard: Option<OwnedMutexGuard<EntryValue<M::V>>>,
     _hooks: PhantomData<H>,
     _v: PhantomData<V>,
@@ -33,9 +32,9 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    pub(super) fn new(pool: P, key: M::K, guard: OwnedMutexGuard<EntryValue<M::V>>) -> Self {
+    pub(super) fn new(map: P, key: M::K, guard: OwnedMutexGuard<EntryValue<M::V>>) -> Self {
         Self {
-            pool,
+            map,
             key,
             guard: Some(guard),
             _hooks: PhantomData,
@@ -57,7 +56,7 @@ where
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
-    /// TODO Docs
+    /// Returns the key of the entry that was locked with this guard.
     #[inline]
     pub fn key(&self) -> &M::K {
         &self.key
@@ -68,7 +67,10 @@ where
         self._guard().value.as_ref()
     }
 
-    /// TODO Docs
+    /// Returns the value of the entry that was locked with this guard.
+    ///
+    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
+    /// and no other thread or task can lock the same key.
     #[inline]
     pub fn value(&self) -> Option<&V> {
         // We're returning Option<&V> instead of &Option<V> so that
@@ -77,7 +79,10 @@ where
         self.value_raw().map(|v| v.borrow())
     }
 
-    /// TODO Docs
+    /// Returns the value of the entry that was locked with this guard.
+    ///
+    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
+    /// and no other thread or task can lock the same key.
     #[inline]
     pub fn value_mut(&mut self) -> Option<&mut V> {
         // We're returning Option<&M::V> instead of &Option<M::V> so that
@@ -86,8 +91,12 @@ where
         self._guard_mut().value.as_mut().map(|v| v.borrow_mut())
     }
 
-    /// TODO Docs
+    /// Removes the entry this guard has locked from the map.
+    ///
+    /// If the entry existed, its value is returned. If the entry didn't exist, [None] is returned.
+    ///
     /// TODO Test return value
+    /// TODO Test this. For example, do we have a test trying to use the guard after insert/remove calls?
     #[inline]
     pub fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it
@@ -95,7 +104,11 @@ where
         removed_value.map(|v| v.fi_into())
     }
 
-    /// TODO Docs
+    /// Inserts a value for the entry this guard has locked to the map.
+    ///
+    /// If the entry existed already, its old value is returned. If the entry didn't exist yet, [None] is returned.
+    /// In both cases, the map will contain the new value after the call.
+    ///
     /// TODO Test return value
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
@@ -103,7 +116,11 @@ where
         old_value.map(|v| v.fi_into())
     }
 
-    /// TODO Docs
+    /// Inserts a value for the entry this guard has locked to the map if it didn't exist yet.
+    /// If it already existed, this call returns [TryInsertError::AlreadyExists] instead.
+    ///
+    /// This function also returns a mutable reference to the new entry, which can be used to further modify it.
+    ///
     /// TODO Test
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
@@ -120,7 +137,11 @@ where
         }
     }
 
-    /// TODO Docs
+    /// Returns a mutable reference to the value of the entry this guard has locked.
+    ///
+    /// If the entry doesn't exist, then `value_fn` is invoked to create it, the value
+    /// is added to the map, and then a mutable reference to it is returned.
+    ///
     /// TODO Test
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
@@ -135,18 +156,24 @@ where
             .borrow_mut()
     }
 
-    /// TODO Docs
+    /// Returns a mutable reference to the value of the entry this guard has locked.
+    ///
+    /// If the entry doesn't exist, then `value` is inserted into the map for this entry,
+    /// and then a mutable reference to it is returned.
+    ///
     /// TODO Test
     #[inline]
     pub fn value_or_insert(&mut self, value: V) -> &mut V {
         self.value_or_insert_with(move || value)
     }
 
-    /// TODO Docs
+    /// Returns the map this guard was created from. This is the map containing the entry
+    /// locked by this guard.
+    ///
     /// TODO Test
     #[inline]
-    pub fn pool(&self) -> &P {
-        &self.pool
+    pub fn map(&self) -> &P {
+        &self.map
     }
 }
 
@@ -162,7 +189,7 @@ where
             .guard
             .take()
             .expect("The self.guard field must always be set unless this was already destructed");
-        self.pool.borrow()._unlock(&self.key, guard);
+        self.map.borrow()._unlock(&self.key, guard);
     }
 }
 

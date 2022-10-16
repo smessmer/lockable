@@ -22,16 +22,16 @@ pub enum Never {}
 
 impl std::error::Error for Never {}
 
-/// Extension trait for `Result<T, Never>` that adds an infallible
-/// version of `unwrap()`.
+/// Extension trait for `Result<T, Never>` that adds [infallible_unwrap()](InfallibleUnwrap::infallible_unwrap),
+/// an infallible version of [unwrap()](Result::unwrap).
 pub trait InfallibleUnwrap<T> {
-    /// Similar to `unwrap()`, but can never fail.
-    /// This is only available on `Result<T, Never>` types
+    /// Similar to [unwrap()](Result::unwrap), but can never fail.
+    /// This is only available on [Result<T, Never>] types
     /// that are used as a result of operations that cannot
     /// return an error.
-    /// Calling `infallible_unwrap()` instead of `unwrap()`
+    /// Calling [infallible_unwrap()](InfallibleUnwrap::infallible_unwrap) instead of [unwrap()](Result::unwrap)
     /// uses the type system to ensure that you don't
-    /// accidentally `unwrap()` a type that might contain
+    /// accidentally unwrap a type that might contain
     /// an error.
     fn infallible_unwrap(self) -> T;
 }

@@ -9,14 +9,18 @@ use crate::hooks::Hooks;
 use crate::lockable_map_impl::{FromInto, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
 
-// TODO This approach of enforcing a limit on the number of total entries during a lock() call isn't great.
-// It means that even if all entries are currently locked and in use and no entry is really "in the cache",
-// it would still block adding new entries. Better would be to put a limit on the number of *unlocked* entries,
-// i.e. entries that are actually in the cache. But since entries are becoming unlocked in the drop implementation
-// of a guard, and evicting often needs to be async, it would require us to have async drop code for the guard.
-// Rust doesn't really support that yet.
-
-/// TODO Docs
+/// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
+/// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
+///
+/// | [LockableLruCache](crate::LockableLruCache) | [LockableHashMap](crate::LockableHashMap) |
+/// |---|---|
+/// | [async_lock](crate::LockableLruCache::async_lock) | [async_lock](crate::LockableHashMap::async_lock) |
+/// | [async_lock_owned](crate::LockableLruCache::async_lock_owned) | [async_lock_owned](crate::LockableHashMap::async_lock_owned) |
+/// | [try_lock_async](crate::LockableLruCache::try_lock_async) | [try_lock_async](crate::LockableHashMap::try_lock_async) |
+/// | [try_lock_owned_async](crate::LockableLruCache::try_lock_owned_async)| [try_lock_owned_async](crate::LockableHashMap::try_lock_owned_async) |
+///
+/// The purpose of this class is the same as the purpose of [SyncLimit], but it has an `async` callback
+/// to evict entries instead of a synchronous callback.
 pub enum AsyncLimit<M, V, H, P, E, F, OnEvictFn>
 where
     M: ArcMutexMapLike,
@@ -26,20 +30,24 @@ where
     F: Future<Output = Result<(), E>>,
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> F,
 {
-    /// TODO Docs
+    /// This enum variant specifies that there is no limit on the number of entries.
+    /// If the locking operation causes a new entry to be created, it will be created
+    /// without evicting anything.
+    ///
+    /// Use [AsyncLimit::no_limit] to create an instance.
     NoLimit {
-        /// TODO Docs
+        #[allow(missing_docs)]
         _m: PhantomData<M>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _v: PhantomData<V>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _h: PhantomData<H>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _p: PhantomData<P>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _o: PhantomData<OnEvictFn>,
     },
-    /// TODO Docs
+    ///
     SoftLimit {
         /// TODO Docs
         max_entries: NonZeroUsize,
@@ -64,7 +72,9 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    /// TODO Docs
+    /// See [AsyncLimit::NoLimit]. This helper function can be used
+    /// to create an instance of [AsyncLimit::NoLimit] without having
+    /// to specify all the [PhantomData] members.
     pub fn no_limit() -> Self {
         Self::NoLimit {
             _m: PhantomData,
@@ -76,7 +86,18 @@ where
     }
 }
 
-/// TODO Docs
+/// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
+/// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
+///
+/// | [LockableLruCache](crate::LockableLruCache) | [LockableHashMap](crate::LockableHashMap) |
+/// |---|---|
+/// | [blocking_lock](crate::LockableLruCache::blocking_lock) | [blocking_lock](crate::LockableHashMap::blocking_lock) |
+/// | [blocking_lock_owned](crate::LockableLruCache::blocking_lock_owned) | [blocking_lock_owned](crate::LockableHashMap::blocking_lock_owned) |
+/// | [try_lock](crate::LockableLruCache::try_lock) | [try_lock](crate::LockableHashMap::try_lock) |
+/// | [try_lock_owned](crate::LockableLruCache::try_lock_owned)| [try_lock_owned](crate::LockableHashMap::try_lock_owned) |
+///
+/// The purpose of this class is the same as the purpose of [AsyncLimit], but it has a synchronous callback
+/// to evict entries instead of an `async` callback.
 pub enum SyncLimit<M, V, H, P, E, OnEvictFn>
 where
     M: ArcMutexMapLike,
@@ -85,17 +106,21 @@ where
     P: Borrow<LockableMapImpl<M, V, H>>,
     OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> Result<(), E>,
 {
-    /// TODO Docs
+    /// This enum variant specifies that there is no limit on the number of entries.
+    /// If the locking operation causes a new entry to be created, it will be created
+    /// without evicting anything.
+    ///
+    /// Use [SyncLimit::no_limit] to create an instance.
     NoLimit {
-        /// TODO Docs
+        #[allow(missing_docs)]
         _m: PhantomData<M>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _v: PhantomData<V>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _h: PhantomData<H>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _p: PhantomData<P>,
-        /// TODO Docs
+        #[allow(missing_docs)]
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
@@ -114,7 +139,9 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
-    /// TODO Docs
+    /// See [SyncLimit::NoLimit]. This helper function can be used
+    /// to create an instance of [SyncLimit::NoLimit] without having
+    /// to specify all the [PhantomData] members.
     pub fn no_limit() -> Self {
         Self::NoLimit {
             _m: PhantomData,

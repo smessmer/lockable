@@ -14,7 +14,6 @@ use super::guard::GuardImpl;
 use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
-// use crate::utils::locked_mutex_guard::LockedMutexGuard;
 
 pub trait FromInto<V> {
     fn fi_from(v: V) -> Self;
@@ -508,7 +507,7 @@ where
     //     cache_entries
     //         .iter()
     //         .filter_map(
-    //             |(key, mutex)| match LockedMutexGuard::try_lock(Arc::clone(mutex)) {
+    //             |(key, mutex)| match Arc::clone(mutex).try_lock() {
     //                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
     //                 Err(_) => None,
     //             },

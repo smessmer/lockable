@@ -24,4 +24,3 @@ pub use limit::{AsyncLimit, SyncLimit};
 pub use lockable_hash_map::{HashMapGuard, HashMapOwnedGuard, LockableHashMap};
 #[cfg(feature = "lru")]
 pub use lockable_lru_cache::{LockableLruCache, LruGuard, LruOwnedGuard};
-// pub use utils::locked_mutex_guard::LockedMutexGuard;
