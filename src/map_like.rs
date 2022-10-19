@@ -16,8 +16,8 @@ type Entry<V> = Arc<Mutex<EntryValue<V>>>;
 /// for [LruCache] and [HashMap]. This is the basis for that map becoming usable in a [LockableMapImpl]
 /// instance.
 pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
-    type K: Eq + PartialEq + Hash + Clone + Debug;
-    type V: Debug;
+    type K: Eq + PartialEq + Hash + Clone;
+    type V;
 
     fn new() -> Self;
 

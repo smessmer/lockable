@@ -21,8 +21,7 @@ type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>
 // work with LruCache as an underlying map
 impl<K, V> ArcMutexMapLike for MapImpl<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     type K = K;
     type V = CacheEntry<V>;
@@ -150,12 +149,12 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// ```
 ///
 ///
-/// You can use an arbitrary type to index cache entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
+/// You can use an arbitrary type to index cache entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone].
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
-/// #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// #[derive(PartialEq, Eq, Hash, Clone)]
 /// struct CustomLockKey(u32);
 ///
 /// let cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
@@ -168,16 +167,14 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 #[derive(Debug)]
 pub struct LockableLruCache<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     map_impl: LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
 }
 
 impl<K, V> LockableLruCache<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     /// Create a new hash map with no entries and no locked keys.
     #[inline]
@@ -590,8 +587,7 @@ where
 
 impl<K, V> Default for LockableLruCache<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     fn default() -> Self {
         Self::new()
@@ -620,8 +616,7 @@ pub type LruOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<Lockab
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
 impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>> for Arc<LockableLruCache<K, V>>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks> {
         &self.map_impl

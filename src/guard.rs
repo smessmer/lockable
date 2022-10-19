@@ -197,6 +197,7 @@ impl<M, V, H, P> Debug for Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
+    M::K: Debug,
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {

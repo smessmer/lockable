@@ -17,8 +17,7 @@ type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 
 impl<K, V> ArcMutexMapLike for MapImpl<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     type K = K;
     type V = V;
@@ -98,12 +97,12 @@ where
 /// ```
 ///
 ///
-/// You can use an arbitrary type to index hash map entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
+/// You can use an arbitrary type to index hash map entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone].
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableHashMap};
 ///
-/// #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// #[derive(PartialEq, Eq, Hash, Clone)]
 /// struct CustomLockKey(u32);
 ///
 /// let hash_map: LockableHashMap<CustomLockKey, String> = LockableHashMap::new();
@@ -116,16 +115,14 @@ where
 #[derive(Debug)]
 pub struct LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     map_impl: LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
 }
 
 impl<K, V> LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     /// Create a new hash map with no entries and no locked keys.
     #[inline]
@@ -475,8 +472,7 @@ where
 
 impl<K, V> Default for LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     fn default() -> Self {
         Self::new()
@@ -505,8 +501,7 @@ pub type HashMapOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, NoopHooks, Arc<Lockab
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
 impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, NoopHooks>> for Arc<LockableHashMap<K, V>>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug,
-    V: Debug,
+    K: Eq + PartialEq + Hash + Clone,
 {
     fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, NoopHooks> {
         &self.map_impl
