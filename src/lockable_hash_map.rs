@@ -32,6 +32,8 @@ where
 
     fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
+        //      Might be possible with the upcoming RawEntry API. If we do that, we may
+        //      even be able to remove the `Clone` bound from `K` everywhere in this library.
         self.entry(key.clone())
             .or_insert_with(|| Arc::new(Mutex::new(EntryValue { value: None })))
     }
