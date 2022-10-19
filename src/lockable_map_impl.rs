@@ -275,7 +275,7 @@ where
         guard: OwnedMutexGuard<EntryValue<M::V>>,
     ) -> Guard<M, V, H, S> {
         this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
-        Guard::new(this, key.clone(), guard)
+        Guard::new(this, key, guard)
     }
 
     #[inline]
