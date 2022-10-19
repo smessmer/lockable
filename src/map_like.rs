@@ -16,9 +16,8 @@ type Entry<V> = Arc<Mutex<EntryValue<V>>>;
 /// for [LruCache] and [HashMap]. This is the basis for that map becoming usable in a [LockableMapImpl]
 /// instance.
 pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
-    // TODO Can we remove the 'static bound from K and V?
-    type K: Eq + PartialEq + Hash + Clone + Debug + 'static;
-    type V: Debug + 'static;
+    type K: Eq + PartialEq + Hash + Clone + Debug;
+    type V: Debug;
 
     fn new() -> Self;
 

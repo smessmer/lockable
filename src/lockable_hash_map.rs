@@ -17,8 +17,8 @@ type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 
 impl<K, V> ArcMutexMapLike for MapImpl<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: Debug + 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    V: Debug,
 {
     type K = K;
     type V = V;
@@ -116,16 +116,16 @@ where
 #[derive(Debug)]
 pub struct LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: Debug + 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    V: Debug,
 {
     map_impl: LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
 }
 
 impl<K, V> LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: Debug + 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    V: Debug,
 {
     /// Create a new hash map with no entries and no locked keys.
     #[inline]
@@ -475,8 +475,8 @@ where
 
 impl<K, V> Default for LockableHashMap<K, V>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: Debug + 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    V: Debug,
 {
     fn default() -> Self {
         Self::new()
@@ -505,8 +505,8 @@ pub type HashMapOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, NoopHooks, Arc<Lockab
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
 impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, NoopHooks>> for Arc<LockableHashMap<K, V>>
 where
-    K: Eq + PartialEq + Hash + Clone + Debug + 'static,
-    V: Debug + 'static,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    V: Debug,
 {
     fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, NoopHooks> {
         &self.map_impl

@@ -47,7 +47,7 @@ where
         #[allow(missing_docs)]
         _o: PhantomData<OnEvictFn>,
     },
-    ///
+    /// TODO Docs
     SoftLimit {
         /// TODO Docs
         max_entries: NonZeroUsize,
