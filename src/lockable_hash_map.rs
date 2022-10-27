@@ -335,17 +335,17 @@ where
     /// use std::sync::Arc;
     ///
     /// # (||{
-    /// let pool = Arc::new(LockableHashMap::<i64, String>::new());
-    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit())?;
-    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit())?;
+    /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
+    /// let guard1 = lockable_map.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = lockable_map.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_map.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_map.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
@@ -363,8 +363,38 @@ where
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
     }
 
-    /// TODO Docs
-    /// TODO Test, we're only testing try_lock so far, not try_lock_async
+    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
+    ///
+    /// This is identical to [LockableHashMap::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
+    /// an `async` callback to be specified for when the map reaches its limit.
+    ///
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
+    /// The lock will be unlocked when the guard is dropped.
+    ///
+    /// This function does not block and can be used in async contexts.
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    /// let guard1 = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit()).await?;
+    ///
+    /// // This next line cannot acquire the lock because `4` is already locked on this thread
+    /// let guard3 = lockable_map.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// assert!(guard3.is_none());
+    ///
+    /// // After dropping the corresponding guard, we can lock it again
+    /// std::mem::drop(guard1);
+    /// let guard3 = lockable_map.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
+    /// TODO Test this, we're only testing try_lock so far, not try_lock_async
     #[inline]
     pub async fn try_lock_async<'a, E, F, OnEvictFn>(
         &'a self,
@@ -395,7 +425,41 @@ where
         LockableMapImpl::try_lock_async(&self.map_impl, key, limit).await
     }
 
-    /// TODO Docs
+    /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
+    ///
+    /// This is identical to [LockableHashMap::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
+    /// an `async` callback to be specified for when the map reaches its limit.
+    ///
+    /// This is identical to [LockableHashMap::try_lock_async], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
+    /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
+    /// easily moved around or cloned.
+    ///
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
+    /// The lock will be unlocked when the guard is dropped.
+    ///
+    /// This function does not block and can be used in async contexts.
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
+    /// let guard1 = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit()).await?;
+    ///
+    /// // This next line cannot acquire the lock because `4` is already locked on this thread
+    /// let guard3 = lockable_map.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// assert!(guard3.is_none());
+    ///
+    /// // After dropping the corresponding guard, we can lock it again
+    /// std::mem::drop(guard1);
+    /// let guard3 = lockable_map.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     /// TODO Test, we're only testing try_lock_owned so far, not try_lock_owned_async
     #[inline]
     pub async fn try_lock_owned_async<E, F, OnEvictFn>(
