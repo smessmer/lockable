@@ -110,42 +110,45 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let entry1 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-/// let entry2 = cache.async_lock(5, AsyncLimit::no_limit()).await.unwrap();
+/// let entry1 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// let entry2 = cache.async_lock(5, AsyncLimit::no_limit()).await?;
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-/// // let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// // let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
-/// let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-/// # });
+/// let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 /// The guards holding a lock for an entry can be used to insert that entry to the cache, remove
 /// it from the cache, or to modify the value of an existing entry.
 ///
 /// ```
+/// use anyhow::Result;
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// async fn insert_entry(cache: &LockableLruCache<i64, String>) -> Result<()> {
+///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
+///     Ok(())
 /// }
 ///
-/// async fn remove_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// async fn remove_entry(cache: &LockableLruCache<i64, String>) -> Result<()> {
+///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
+///     Ok(())
 /// }
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// insert_entry(&cache).await;
-/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
+/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// remove_entry(&cache).await;
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
-/// # });
+/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 ///
@@ -159,8 +162,8 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// let cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await.unwrap();
-/// # });
+/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 /// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
@@ -218,16 +221,18 @@ where
     /// ```
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
+    /// # (||{
     /// let cache = LockableLruCache::<i64, String>::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// // let guard3 = cache.blocking_lock(4, SyncLimit::no_limit())?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock<'a, E, OnEvictFn>(
@@ -277,16 +282,18 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
+    /// # (||{
     /// let cache = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock_owned<E, OnEvictFn>(
@@ -324,18 +331,20 @@ where
     /// ```
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
+    /// # (||{
     /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock<'a, E, OnEvictFn>(
@@ -380,18 +389,20 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
+    /// # (||{
     /// let pool = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock_owned<E, OnEvictFn>(

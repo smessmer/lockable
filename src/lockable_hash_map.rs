@@ -60,42 +60,45 @@ where
 ///
 /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let entry1 = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-/// let entry2 = hash_map.async_lock(5, AsyncLimit::no_limit()).await.unwrap();
+/// let entry1 = hash_map.async_lock(4, AsyncLimit::no_limit()).await?;
+/// let entry2 = hash_map.async_lock(5, AsyncLimit::no_limit()).await?;
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
 /// // let entry3 = hash_map.async_lock(4).await;
 ///
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
-/// let entry3 = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-/// # });
+/// let entry3 = hash_map.async_lock(4, AsyncLimit::no_limit()).await?;
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 /// The guards holding a lock for an entry can be used to insert that entry to the hash map, remove
 /// it from the hash map, or to modify the value of an existing entry.
 ///
 /// ```
+/// use anyhow::Result;
 /// use lockable::{AsyncLimit, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(hash_map: &LockableHashMap<i64, String>) {
-///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// async fn insert_entry(hash_map: &LockableHashMap<i64, String>) -> Result<()> {
+///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
+///     Ok(())
 /// }
 ///
-/// async fn remove_entry(hash_map: &LockableHashMap<i64, String>) {
-///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+/// async fn remove_entry(hash_map: &LockableHashMap<i64, String>) -> Result<()> {
+///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
+///     Ok(())
 /// }
 ///
 /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
-/// assert_eq!(None, hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
+/// assert_eq!(None, hash_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// insert_entry(&hash_map).await;
-/// assert_eq!(Some(&String::from("Hello World")), hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
+/// assert_eq!(Some(&String::from("Hello World")), hash_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// remove_entry(&hash_map).await;
-/// assert_eq!(None, hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value());
-/// # });
+/// assert_eq!(None, hash_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 ///
@@ -109,8 +112,8 @@ where
 ///
 /// let hash_map: LockableHashMap<CustomLockKey, String> = LockableHashMap::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = hash_map.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await.unwrap();
-/// # });
+/// let guard = hash_map.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
+/// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
 /// Under the hood, a [LockableHashMap] is a [std::collections::HashMap] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
@@ -168,16 +171,18 @@ where
     /// ```
     /// use lockable::{LockableHashMap, SyncLimit};
     ///
+    /// # (|| {
     /// let hash_map = LockableHashMap::<i64, String>::new();
-    /// let guard1 = hash_map.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = hash_map.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = hash_map.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = hash_map.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
     /// // let guard3 = hash_map.blocking_lock(4);
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = hash_map.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = hash_map.blocking_lock(4, SyncLimit::no_limit())?;
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock<'a, E, OnEvictFn>(
@@ -227,16 +232,18 @@ where
     /// use lockable::{LockableHashMap, SyncLimit};
     /// use std::sync::Arc;
     ///
+    /// # (|| {
     /// let hash_map = Arc::new(LockableHashMap::<i64, String>::new());
-    /// let guard1 = hash_map.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = hash_map.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = hash_map.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard2 = hash_map.blocking_lock_owned(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
     /// // let guard3 = hash_map.blocking_lock_owned(4);
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = hash_map.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = hash_map.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock_owned<E, OnEvictFn>(
@@ -267,18 +274,20 @@ where
     /// ```
     /// use lockable::{LockableHashMap, SyncLimit};
     ///
+    /// # (|| {
     /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
-    /// let guard1 = hash_map.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = hash_map.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = hash_map.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = hash_map.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = hash_map.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = hash_map.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = hash_map.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = hash_map.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock<'a, E, OnEvictFn>(
@@ -325,18 +334,20 @@ where
     /// use lockable::{LockableHashMap, SyncLimit};
     /// use std::sync::Arc;
     ///
+    /// # (||{
     /// let pool = Arc::new(LockableHashMap::<i64, String>::new());
-    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+    /// let guard1 = pool.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = pool.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
+    /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock_owned<'a, E, OnEvictFn>(

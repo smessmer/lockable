@@ -1,7 +1,5 @@
 //! TODO Crate level documentation
 
-// TODO In each doc comment example, replace unwrap() with `?`
-
 #![deny(missing_docs)]
 
 mod guard;
