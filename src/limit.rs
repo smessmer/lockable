@@ -12,12 +12,12 @@ use crate::never::Never;
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
 /// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
 ///
-/// | [LockableLruCache](crate::LockableLruCache) | [LockableHashMap](crate::LockableHashMap) |
-/// |---|---|
-/// | [async_lock](crate::LockableLruCache::async_lock) | [async_lock](crate::LockableHashMap::async_lock) |
-/// | [async_lock_owned](crate::LockableLruCache::async_lock_owned) | [async_lock_owned](crate::LockableHashMap::async_lock_owned) |
-/// | [try_lock_async](crate::LockableLruCache::try_lock_async) | [try_lock_async](crate::LockableHashMap::try_lock_async) |
-/// | [try_lock_owned_async](crate::LockableLruCache::try_lock_owned_async)| [try_lock_owned_async](crate::LockableHashMap::try_lock_owned_async) |
+/// | [LockableLruCache](crate::LockableLruCache)                            | [LockableHashMap](crate::LockableHashMap)                            |
+/// |------------------------------------------------------------------------|----------------------------------------------------------------------|
+/// | [async_lock](crate::LockableLruCache::async_lock)                      | [async_lock](crate::LockableHashMap::async_lock)                     |
+/// | [async_lock_owned](crate::LockableLruCache::async_lock_owned)          | [async_lock_owned](crate::LockableHashMap::async_lock_owned)         |
+/// | [try_lock_async](crate::LockableLruCache::try_lock_async)              | [try_lock_async](crate::LockableHashMap::try_lock_async)             |
+/// | [try_lock_owned_async](crate::LockableLruCache::try_lock_owned_async)  | [try_lock_owned_async](crate::LockableHashMap::try_lock_owned_async) |
 ///
 /// The purpose of this class is the same as the purpose of [SyncLimit], but it has an `async` callback
 /// to evict entries instead of a synchronous callback.
@@ -89,12 +89,12 @@ where
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
 /// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
 ///
-/// | [LockableLruCache](crate::LockableLruCache) | [LockableHashMap](crate::LockableHashMap) |
-/// |---|---|
-/// | [blocking_lock](crate::LockableLruCache::blocking_lock) | [blocking_lock](crate::LockableHashMap::blocking_lock) |
-/// | [blocking_lock_owned](crate::LockableLruCache::blocking_lock_owned) | [blocking_lock_owned](crate::LockableHashMap::blocking_lock_owned) |
-/// | [try_lock](crate::LockableLruCache::try_lock) | [try_lock](crate::LockableHashMap::try_lock) |
-/// | [try_lock_owned](crate::LockableLruCache::try_lock_owned)| [try_lock_owned](crate::LockableHashMap::try_lock_owned) |
+/// | [LockableLruCache](crate::LockableLruCache)                            | [LockableHashMap](crate::LockableHashMap)                          |
+/// |------------------------------------------------------------------------|--------------------------------------------------------------------|
+/// | [blocking_lock](crate::LockableLruCache::blocking_lock)                | [blocking_lock](crate::LockableHashMap::blocking_lock)             |
+/// | [blocking_lock_owned](crate::LockableLruCache::blocking_lock_owned)    | [blocking_lock_owned](crate::LockableHashMap::blocking_lock_owned) |
+/// | [try_lock](crate::LockableLruCache::try_lock)                          | [try_lock](crate::LockableHashMap::try_lock)                       |
+/// | [try_lock_owned](crate::LockableLruCache::try_lock_owned)              | [try_lock_owned](crate::LockableHashMap::try_lock_owned)           |
 ///
 /// The purpose of this class is the same as the purpose of [AsyncLimit], but it has a synchronous callback
 /// to evict entries instead of an `async` callback.
