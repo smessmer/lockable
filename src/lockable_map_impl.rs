@@ -441,7 +441,7 @@ where
 
     // Caveat: Locked keys are listed even if they don't carry a value
     #[inline]
-    pub fn keys(&self) -> Vec<M::K> {
+    pub fn keys_with_entries_or_locked(&self) -> Vec<M::K> {
         let cache_entries = self._cache_entries();
         cache_entries
             .iter()

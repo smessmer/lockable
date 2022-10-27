@@ -656,39 +656,39 @@ macro_rules! instantiate_lockable_tests {
             }
         }
 
-        mod keys {
+        mod keys_with_entries_or_locked {
             use super::*;
 
             #[tokio::test]
             async fn async_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
                 pool.async_lock(5, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
                 pool.async_lock(6, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }
@@ -696,33 +696,33 @@ macro_rules! instantiate_lockable_tests {
             #[tokio::test]
             async fn async_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
                 pool.async_lock_owned(5, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
                 pool.async_lock_owned(6, AsyncLimit::no_limit()).await.unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }
@@ -730,33 +730,33 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.blocking_lock(4, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
                 pool.blocking_lock(5, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
                 pool.blocking_lock(6, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }
@@ -764,33 +764,33 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn blocking_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
                 pool.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
                 pool.blocking_lock_owned(6, SyncLimit::no_limit()).unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }
@@ -798,33 +798,33 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock() {
                 let pool = $lockable_type::<isize, String>::new();
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
                 pool.try_lock(5, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
                 pool.try_lock(6, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }
@@ -832,33 +832,33 @@ macro_rules! instantiate_lockable_tests {
             #[test]
             fn try_lock_owned() {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Locking lists key, unlocking unlists key
                 let guard = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // If entry is inserted, it remains listed after unlocking
                 let mut guard = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap();
                 guard.insert(String::from("Value"));
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
 
                 // If entry is removed, it is not listed anymore after unlocking
                 let mut guard = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap();
                 guard.remove();
-                assert_eq!(vec![4], pool.keys());
+                assert_eq!(vec![4], pool.keys_with_entries_or_locked());
                 std::mem::drop(guard);
-                assert_eq!(Vec::<isize>::new(), pool.keys());
+                assert_eq!(Vec::<isize>::new(), pool.keys_with_entries_or_locked());
 
                 // Add multiple keys
                 pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
                 pool.try_lock_owned(5, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
                 pool.try_lock_owned(6, SyncLimit::no_limit()).unwrap().unwrap().insert(String::from("Content"));
-                let mut keys = pool.keys();
+                let mut keys = pool.keys_with_entries_or_locked();
                 keys.sort();
                 assert_eq!(vec![4, 5, 6], keys);
             }

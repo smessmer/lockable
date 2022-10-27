@@ -656,7 +656,7 @@ where
         LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }
 
-    /// TODO Docs
+    /// Consumes the cache and returns an iterator over all of its entries.
     /// TODO Test
     #[inline]
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
@@ -665,11 +665,14 @@ where
             .map(|(k, v)| (k, v.value))
     }
 
-    /// TODO Docs
-    /// Caveat: Locked keys are listed even if they don't carry a value
+    /// Returns all of the keys that currently have an entry in the map.
+    /// Caveat: Currently locked keys are listed even if they don't carry a value.
+    ///
+    /// This function has a high performance cost because it needs to lock the whole
+    /// map to get a consistent snapshot and clone all the keys.
     #[inline]
-    pub fn keys(&self) -> Vec<K> {
-        self.map_impl.keys()
+    pub fn keys_with_entries_or_locked(&self) -> Vec<K> {
+        self.map_impl.keys_with_entries_or_locked()
     }
 
     /// TODO Docs
