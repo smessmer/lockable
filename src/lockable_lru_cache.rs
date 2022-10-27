@@ -102,8 +102,8 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 }
 
 /// A threadsafe LRU cache where individual keys can be locked/unlocked, even if there is no entry for this key in the cache.
-/// It initially considers all keys as "unlocked", but they can be locked
-/// and if a second thread tries to acquire a lock for the same key, they will have to wait.
+/// It initially considers all keys as "unlocked", but they can be locked and if a second thread tries to acquire a lock
+/// for the same key, they will have to wait.
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableLruCache};
@@ -122,21 +122,21 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// # });
 /// ```
 ///
-/// The guards holding a lock for an entry can be used to insert that entry to the cache, remove it from the cache, or to modify
-/// the value of an existing entry.
+/// The guards holding a lock for an entry can be used to insert that entry to the cache, remove
+/// it from the cache, or to modify the value of an existing entry.
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-///     entry.insert(String::from("Hello World"));
+///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+///     entry_guard.insert(String::from("Hello World"));
 /// }
 ///
 /// async fn remove_entry(cache: &LockableLruCache<i64, String>) {
-///     let mut entry = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-///     entry.remove();
+///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+///     entry_guard.remove();
 /// }
 ///
 /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
@@ -163,7 +163,8 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// # });
 /// ```
 ///
-/// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure there aren't any race conditions when adding or removing entries.
+/// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
+/// empty entries can also be locked and that there aren't any race conditions when adding or removing entries.
 #[derive(Debug)]
 pub struct LockableLruCache<K, V>
 where
@@ -190,20 +191,6 @@ where
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self.map_impl.num_entries_or_locked()
-    }
-
-    /// TODO Docs
-    /// TODO Tests
-    #[inline]
-    pub fn num_locked(&self) -> usize {
-        self.map_impl.num_locked()
-    }
-
-    /// TODO Docs
-    /// TODO Tests
-    #[inline]
-    pub fn num_unlocked(&self) -> usize {
-        self.map_impl.num_unlocked()
     }
 
     /// Lock a key and return a guard with any potential cache entry for that key.

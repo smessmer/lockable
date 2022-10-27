@@ -4,10 +4,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 use tokio::sync::OwnedMutexGuard;
 
 use super::guard::Guard;
@@ -53,9 +50,6 @@ where
     // cache_entries is always Some unless we're currently destructing the object
     cache_entries: Option<std::sync::Mutex<M>>,
 
-    /// Counts the number of currently locked entries.
-    num_locked: AtomicUsize,
-
     hooks: H,
 
     _v: PhantomData<V>,
@@ -92,7 +86,6 @@ where
     pub fn new_with_hooks(hooks: H) -> Self {
         Self {
             cache_entries: Some(std::sync::Mutex::new(M::new())),
-            num_locked: 0.into(),
             hooks,
             _v: PhantomData,
         }
@@ -101,32 +94,6 @@ where
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self._cache_entries().len()
-    }
-
-    #[inline]
-    pub fn num_locked(&self) -> usize {
-        self.num_locked.load(Ordering::SeqCst)
-    }
-
-    // TODO We can probably remove num_unlocked and the atomic counter for it, because we now use a different mechanism
-    // to enforce a max_entries limit.
-    #[inline]
-    pub fn num_unlocked(&self) -> usize {
-        let entries = self._cache_entries();
-        self._num_unlocked(&entries)
-    }
-
-    fn _num_unlocked(&self, entries: &std::sync::MutexGuard<M>) -> usize {
-        // We keep `entries` as a lock here so that no other task can come, call _unlock() and decrease entries.len().
-        // There is no other way to decrease entries.len(). Other tasks can come in and increase self.num_locked()
-        // while we're in here, but they can never increase it to larger than entries.len().
-        assert!(
-            entries.len() >= self.num_locked(),
-            "LockableMapImpl::num_unlocked: {} < {}",
-            entries.len(),
-            self.num_locked()
-        );
-        entries.len() - self.num_locked()
     }
 
     fn _cache_entries(&self) -> std::sync::MutexGuard<'_, M> {
@@ -274,7 +241,6 @@ where
         key: M::K,
         guard: OwnedMutexGuard<EntryValue<M::V>>,
     ) -> Guard<M, V, H, S> {
-        this.borrow().num_locked.fetch_add(1, Ordering::SeqCst);
         Guard::new(this, key, guard)
     }
 
@@ -403,12 +369,6 @@ where
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
         std::mem::drop(guard);
-
-        let prev_value = self.num_locked.fetch_sub(1, Ordering::SeqCst);
-        assert!(
-            prev_value > 0,
-            "Somehow we returned a guard that was created without incrementing num_locked."
-        );
 
         // Now the guard is dropped and the lock for this key is unlocked.
         // If there are any other Self::blocking_lock/async_lock/try_lock()
@@ -571,26 +531,5 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("LockableCache").finish()
-    }
-}
-
-impl<M, V, H> Drop for LockableMapImpl<M, V, H>
-where
-    M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
-    H: Hooks<M::V>,
-{
-    fn drop(&mut self) {
-        let num_locked = self.num_locked.load(Ordering::SeqCst);
-        if 0 != num_locked {
-            if std::thread::panicking() {
-                // We're already panicking, double panic wouldn't show a good error message anyways. Let's just log instead.
-                // A common scenario for this to happen is a failing test case.
-                log::error!("Miscalculation in num_locked: {}", num_locked);
-                eprintln!("Miscalculation in num_locked: {}", num_locked);
-            } else {
-                panic!("Miscalculation in num_locked: {}", num_locked);
-            }
-        }
     }
 }

@@ -52,8 +52,8 @@ where
 }
 
 /// A threadsafe hash map where individual keys can be locked/unlocked, even if there is no entry for this key in the map.
-/// It initially considers all keys as "unlocked", but they can be locked
-/// and if a second thread tries to acquire a lock for the same key, they will have to wait.
+/// It initially considers all keys as "unlocked", but they can be locked and if a second thread tries to acquire a lock
+/// for the same key, they will have to wait.
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableHashMap};
@@ -72,21 +72,21 @@ where
 /// # });
 /// ```
 ///
-/// The guards holding a lock for an entry can be used to insert that entry to the hash map, remove it from the hash map, or to modify
-/// the value of an existing entry.
+/// The guards holding a lock for an entry can be used to insert that entry to the hash map, remove
+/// it from the hash map, or to modify the value of an existing entry.
 ///
 /// ```
 /// use lockable::{AsyncLimit, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(hash_map: &LockableHashMap<i64, String>) {
-///     let mut entry = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-///     entry.insert(String::from("Hello World"));
+///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+///     entry_guard.insert(String::from("Hello World"));
 /// }
 ///
 /// async fn remove_entry(hash_map: &LockableHashMap<i64, String>) {
-///     let mut entry = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-///     entry.remove();
+///     let mut entry_guard = hash_map.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
+///     entry_guard.remove();
 /// }
 ///
 /// let hash_map: LockableHashMap<i64, String> = LockableHashMap::new();
@@ -113,7 +113,8 @@ where
 /// # });
 /// ```
 ///
-/// Under the hood, a [LockableHashMap] is a [std::collections::HashMap] of [Mutex](tokio::sync::Mutex)es, with some logic making sure there aren't any race conditions when adding or removing entries.
+/// Under the hood, a [LockableHashMap] is a [std::collections::HashMap] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
+/// empty entries can also be locked and that there aren't any race conditions when adding or removing entries.
 #[derive(Debug)]
 pub struct LockableHashMap<K, V>
 where
@@ -140,20 +141,6 @@ where
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self.map_impl.num_entries_or_locked()
-    }
-
-    /// TODO Docs
-    /// TODO Tests
-    #[inline]
-    pub fn num_locked(&self) -> usize {
-        self.map_impl.num_locked()
-    }
-
-    /// TODO Docs
-    /// TODO Tests
-    #[inline]
-    pub fn num_unlocked(&self) -> usize {
-        self.map_impl.num_unlocked()
     }
 
     /// Lock a key and return a guard with any potential map entry for that key.
