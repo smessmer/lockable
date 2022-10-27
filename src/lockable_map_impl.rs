@@ -450,10 +450,9 @@ where
             .collect()
     }
 
-    fn _lock_up_to_n_first_unlocked_entries<'a, S: Borrow<Self> + Clone>(
+    fn _lock_up_to_n_first_unlocked_entries<S: Borrow<Self> + Clone>(
         this: &S,
-        // TODO Without explicit 'a possible?
-        entries: &mut std::sync::MutexGuard<'a, M>,
+        entries: &mut std::sync::MutexGuard<'_, M>,
         num_entries: usize,
     ) -> Vec<Guard<M, V, H, S>> {
         let mut result = Vec::new();
