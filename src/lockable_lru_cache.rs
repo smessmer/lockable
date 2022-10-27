@@ -108,17 +108,17 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// ```
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
-/// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
+/// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let entry1 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
-/// let entry2 = cache.async_lock(5, AsyncLimit::no_limit()).await?;
+/// let entry1 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// let entry2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 ///
 /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-/// // let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// // let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
-/// let entry3 = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 /// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
@@ -130,24 +130,24 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(cache: &LockableLruCache<i64, String>) -> Result<()> {
-///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// async fn insert_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<()> {
+///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
 ///     Ok(())
 /// }
 ///
-/// async fn remove_entry(cache: &LockableLruCache<i64, String>) -> Result<()> {
-///     let mut entry_guard = cache.async_lock(4, AsyncLimit::no_limit()).await?;
+/// async fn remove_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<()> {
+///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
 ///     Ok(())
 /// }
 ///
-/// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
-/// insert_entry(&cache).await;
-/// assert_eq!(Some(&String::from("Hello World")), cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
-/// remove_entry(&cache).await;
-/// assert_eq!(None, cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
+/// assert_eq!(None, lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// insert_entry(&lockable_cache).await;
+/// assert_eq!(Some(&String::from("Hello World")), lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// remove_entry(&lockable_cache).await;
+/// assert_eq!(None, lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
@@ -160,9 +160,9 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// #[derive(PartialEq, Eq, Hash, Clone)]
 /// struct CustomLockKey(u32);
 ///
-/// let cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
+/// let lockable_cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
+/// let guard = lockable_cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
 /// # Ok::<(), anyhow::Error>(())}).unwrap();
 /// ```
 ///
@@ -222,16 +222,16 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// # (||{
-    /// let cache = LockableLruCache::<i64, String>::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit())?;
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit())?;
+    /// let lockable_cache = LockableLruCache::<i64, String>::new();
+    /// let guard1 = lockable_cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = lockable_cache.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// // let guard3 = lockable_cache.blocking_lock(4, SyncLimit::no_limit())?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_cache.blocking_lock(4, SyncLimit::no_limit())?;
     /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
@@ -283,16 +283,16 @@ where
     /// use std::sync::Arc;
     ///
     /// # (||{
-    /// let cache = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
-    /// let guard2 = cache.blocking_lock_owned(5, SyncLimit::no_limit())?;
+    /// let lockable_cache = Arc::new(LockableLruCache::<i64, String>::new());
+    /// let guard1 = lockable_cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard2 = lockable_cache.blocking_lock_owned(5, SyncLimit::no_limit())?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// // let guard3 = lockable_cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
     /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
@@ -332,17 +332,17 @@ where
     /// use lockable::{SyncLimit, LockableLruCache};
     ///
     /// # (||{
-    /// let cache: LockableLruCache<i64, String> = LockableLruCache::new();
-    /// let guard1 = cache.blocking_lock(4, SyncLimit::no_limit())?;
-    /// let guard2 = cache.blocking_lock(5, SyncLimit::no_limit())?;
+    /// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
+    /// let guard1 = lockable_cache.blocking_lock(4, SyncLimit::no_limit())?;
+    /// let guard2 = lockable_cache.blocking_lock(5, SyncLimit::no_limit())?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_cache.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = cache.try_lock(4, SyncLimit::no_limit())?;
+    /// let guard3 = lockable_cache.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
@@ -545,7 +545,33 @@ where
         LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
 
-    /// TODO Docs
+    /// Lock a key and return a guard with any potential map entry for that key.
+    /// Any changes to that entry will be persisted in the map.
+    /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
+    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    ///
+    /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
+    /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
+    /// of the lock. When the guard goes out of scope, the lock will be unlocked.
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableLruCache, AsyncLimit};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let locakble_map = LockableLruCache::<i64, String>::new();
+    /// let guard1 = locakble_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = locakble_map.async_lock(5, AsyncLimit::no_limit()).await?;
+    ///
+    /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
+    /// // let guard3 = locakble_map.async_lock(4).await?;
+    ///
+    /// // After dropping the corresponding guard, we can lock it again
+    /// std::mem::drop(guard1);
+    /// let guard3 = locakble_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     #[inline]
     pub async fn async_lock<'a, E, F, OnEvictFn>(
         &'a self,
@@ -576,7 +602,38 @@ where
         LockableMapImpl::async_lock(&self.map_impl, key, limit).await
     }
 
-    /// TODO Docs
+    /// Lock a key and return a guard with any potential map entry for that key.
+    /// Any changes to that entry will be persisted in the map.
+    /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
+    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    ///
+    /// This is identical to [LockableLruCache::async_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
+    /// returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [HashMapOwnedGuard] can be more
+    /// easily moved around or cloned.
+    ///
+    /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
+    /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
+    /// of the lock. When the guard goes out of scope, the lock will be unlocked.
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let locakble_map = Arc::new(LockableLruCache::<i64, String>::new());
+    /// let guard1 = locakble_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = locakble_map.async_lock_owned(5, AsyncLimit::no_limit()).await?;
+    ///
+    /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
+    /// // let guard3 = locakble_map.async_lock_owned(4).await?;
+    ///
+    /// // After dropping the corresponding guard, we can lock it again
+    /// std::mem::drop(guard1);
+    /// let guard3 = locakble_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     #[inline]
     pub async fn async_lock_owned<E, F, OnEvictFn>(
         self: &Arc<Self>,
