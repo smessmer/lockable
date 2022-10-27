@@ -36,15 +36,15 @@ where
     ///
     /// Use [AsyncLimit::no_limit] to create an instance.
     NoLimit {
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _m: PhantomData<M>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _v: PhantomData<V>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _h: PhantomData<H>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _p: PhantomData<P>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
@@ -112,15 +112,15 @@ where
     ///
     /// Use [SyncLimit::no_limit] to create an instance.
     NoLimit {
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _m: PhantomData<M>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _v: PhantomData<V>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _h: PhantomData<H>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _p: PhantomData<P>,
-        #[allow(missing_docs)]
+        #[doc(hidden)]
         _o: PhantomData<OnEvictFn>,
     },
     /// TODO Docs
