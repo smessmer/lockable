@@ -257,7 +257,7 @@ where
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
     /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
     ///
-    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used from both async and non-async contexts.
@@ -314,7 +314,7 @@ where
     /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
-    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used in both async and non-async contexts.
@@ -335,7 +335,7 @@ where
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_some());
     /// ```
     #[inline]

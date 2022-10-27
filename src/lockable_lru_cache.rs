@@ -259,7 +259,7 @@ where
 
     /// Lock a lock by key and return a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::blocking_lock], but it works on an `Arc<LockableLruCache<K, V>>` instead of a [LockableLruCache] and
+    /// This is identical to [LockableLruCache::blocking_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
     /// returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
@@ -314,7 +314,7 @@ where
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
     /// a cache entry by itself. Cache entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
     ///
-    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used from both async and non-async contexts.
@@ -367,11 +367,11 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::try_lock], but it works on an `Arc<LockableLruCache<K, V>>` instead of a [LockableLruCache] and
+    /// This is identical to [LockableLruCache::try_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
     /// returns an [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
     /// easily moved around or cloned.
     ///
-    /// If the lock could not be acquired because it is already locked, then [None] is returned. Otherwise, a RAII guard is returned.
+    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// Examples
@@ -390,7 +390,7 @@ where
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = pool.try_lock(4, SyncLimit::no_limit()).unwrap();
+    /// let guard3 = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap();
     /// assert!(guard3.is_some());
     /// ```
     #[inline]

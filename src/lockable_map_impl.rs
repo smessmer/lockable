@@ -450,34 +450,6 @@ where
             .collect()
     }
 
-    /// If there are more than `num_remaining_unlocked` unlocked keys,
-    /// lock all except the `num_remaining_unlocked` last ones (in iteration order).
-    /// This can, for example, be used to enforce a capacity limit on
-    /// the number of unlocked entries in the cache by locking and then
-    /// deleting overlimit entries.
-    /// TODO Test
-    /// TODO This can probably be removed now since we have a new mechanism for enforcing a limit
-    // pub fn lock_all_unlocked_except_n_first<S: Borrow<Self> + Clone>(
-    //     this: S,
-    //     num_remaining_unlocked: usize,
-    // ) -> impl Iterator<Item = Guard<M, V, H, S>> {
-    //     let this_borrow = this.borrow();
-    //     let cache_entries = this_borrow._cache_entries();
-    //     let num_unlocked = this_borrow._num_unlocked(&cache_entries);
-    //     let num_overlimit = num_unlocked.saturating_sub(num_remaining_unlocked);
-    //     cache_entries
-    //         .iter()
-    //         .filter_map(
-    //             |(key, mutex)| match Arc::clone(mutex).try_lock() {
-    //                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
-    //                 Err(_) => None,
-    //             },
-    //         )
-    //         .take(num_overlimit)
-    //         .collect::<Vec<_>>()
-    //         .into_iter()
-    // }
-
     fn _lock_up_to_n_first_unlocked_entries<'a, S: Borrow<Self> + Clone>(
         this: &S,
         // TODO Without explicit 'a possible?
