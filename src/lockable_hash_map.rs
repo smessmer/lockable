@@ -160,6 +160,9 @@ where
     /// The exact behavior on locking a lock in the thread which already holds the lock is left unspecified.
     /// However, this function will not return on the second call (it might panic or deadlock, for example).
     ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
+    /// for an explanation of how exactly it works.
+    ///
     /// Panics
     /// -----
     /// - This function might panic when called if the lock is already held by the current thread.
@@ -220,6 +223,9 @@ where
     ///
     /// This function can be used from non-async contexts but will panic if used from async contexts.
     ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
+    /// for an explanation of how exactly it works.
+    ///
     /// Panics
     /// -----
     /// - This function might panic when called if the lock is already held by the current thread.
@@ -268,6 +274,9 @@ where
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used from both async and non-async contexts.
+    ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
+    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
@@ -328,6 +337,9 @@ where
     ///
     /// This function does not block and can be used in both async and non-async contexts.
     ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
+    /// for an explanation of how exactly it works.
+    ///
     /// Examples
     /// -----
     /// ```
@@ -372,6 +384,9 @@ where
     /// The lock will be unlocked when the guard is dropped.
     ///
     /// This function does not block and can be used in async contexts.
+    ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
+    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
@@ -439,6 +454,9 @@ where
     ///
     /// This function does not block and can be used in async contexts.
     ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
+    /// for an explanation of how exactly it works.
+    ///
     /// Examples
     /// -----
     /// ```
@@ -482,6 +500,9 @@ where
     /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
     /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
     /// of the lock. When the guard goes out of scope, the lock will be unlocked.
+    ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
+    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
@@ -543,6 +564,9 @@ where
     /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
     /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
     /// of the lock. When the guard goes out of scope, the lock will be unlocked.
+    ///
+    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
+    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
