@@ -350,7 +350,7 @@ where
     /// # Ok::<(), anyhow::Error>(())})().unwrap();
     /// ```
     #[inline]
-    pub fn try_lock_owned<'a, E, OnEvictFn>(
+    pub fn try_lock_owned<E, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,

@@ -148,7 +148,7 @@ where
                         // Let's avoid that deadlock and allow the current locking
                         // request, even though it goes above the limit.
                         // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
-                        if locked.len() == 0 {
+                        if locked.is_empty() {
                             // TODO Test that this works, i.e. that the map still correctly works when it's full and doesn't deadlock (and same for the _load_or_insert_mutex_for_key_sync version)
                             break cache_entries;
                         }
@@ -214,7 +214,7 @@ where
                         // Let's avoid that deadlock and allow the current locking
                         // request, even though it goes above the limit.
                         // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
-                        if locked.len() == 0 {
+                        if locked.is_empty() {
                             break cache_entries;
                         }
 
@@ -384,7 +384,7 @@ where
         }
     }
 
-    fn _delete_if_unlocked_and_nobody_waiting_for_lock<'a>(
+    fn _delete_if_unlocked_and_nobody_waiting_for_lock(
         cache_entries: &mut std::sync::MutexGuard<'_, M>,
         key: &M::K,
     ) {
@@ -458,26 +458,23 @@ where
         let mut result = Vec::new();
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
-            match Arc::clone(mutex).try_lock_owned() {
-                Ok(guard) => {
-                    if guard.value.is_some() {
-                        result.push(Self::_make_guard(this.clone(), key.clone(), guard))
-                    } else {
-                        // This can happen if the entry was deleted while we waited for the lock.
-                        // Because we have a Arc::clone of the mutex here, the _unlock() of that
-                        // deletion operation didn't actually delete the entry and we need
-                        // to give a chance for deletion now. We can't immediately delete it
-                        // because that requires a &mut borrow of entries and we currently have
-                        // a & borrow. But we can remember those keys and delete them further down.
-                        to_delete.push(key.clone());
-                    }
+            if let Ok(guard) = Arc::clone(mutex).try_lock_owned() {
+                if guard.value.is_some() {
+                    result.push(Self::_make_guard(this.clone(), key.clone(), guard))
+                } else {
+                    // This can happen if the entry was deleted while we waited for the lock.
+                    // Because we have a Arc::clone of the mutex here, the _unlock() of that
+                    // deletion operation didn't actually delete the entry and we need
+                    // to give a chance for deletion now. We can't immediately delete it
+                    // because that requires a &mut borrow of entries and we currently have
+                    // a & borrow. But we can remember those keys and delete them further down.
+                    to_delete.push(key.clone());
                 }
-                Err(_) => {
-                    // A failed try_lock means we currently have another lock and we can rely on that one
-                    // calling _unlock and potentially deleting an item if it is None. So we don't need
-                    // to create a guard object here. Because we have a lock on `entries`, there are no
-                    // race conditions with that _unlock.
-                }
+            } else {
+                // A failed try_lock means we currently have another lock and we can rely on that one
+                // calling _unlock and potentially deleting an item if it is None. So we don't need
+                // to create a guard object here. Because we have a lock on `entries`, there are no
+                // race conditions with that _unlock.
             }
             if result.len() >= num_entries {
                 break;

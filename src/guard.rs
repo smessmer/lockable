@@ -25,7 +25,7 @@ where
     _v: PhantomData<V>,
 }
 
-impl<'a, M, V, H, P> Guard<M, V, H, P>
+impl<M, V, H, P> Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
