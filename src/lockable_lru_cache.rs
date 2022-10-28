@@ -675,7 +675,10 @@ where
         self.map_impl.keys_with_entries_or_locked()
     }
 
-    /// TODO Docs
+    /// Lock all entries that are currently unlocked and that were unlocked for at least
+    /// the given `duration`. This follows the LRU nature of the cache.
+    /// TODO Test whether the returned iterator keeps a lock on the whole map and if yes,
+    ///      try to fix that or at least document it.
     /// TODO Test
     pub fn lock_entries_unlocked_for_at_least_owned(
         self: &Arc<Self>,
@@ -692,13 +695,42 @@ where
         })
     }
 
-    /// TODO Docs. Note that it locks and returns all currently existing entries but is async, so new entries could be added concurrently and those entries may or may not be returned.
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// The returned stream is `async` and therefore may return items much later than
+    /// when this function was called, but it only returns the entries that existed at
+    /// the time this function was called. Any items that were added since the call to
+    /// this function will not be returned by the stream, and any items that were
+    /// deleted since the function call will still be returned by the stream.
+    ///
+    /// TODO Test that this doesn't lock the whole map while the stream hasn't gotten
+    /// all locks yet and still allows locking/unlocking locks.
+    ///
     /// TODO Test
     pub async fn lock_all_entries(&self) -> impl Stream<Item = LruGuard<'_, K, V>> {
         LockableMapImpl::lock_all(&self.map_impl).await
     }
 
-    /// TODO Docs. Note that it locks and returns all currently existing entries but is async, so new entries could be added concurrently and those entries may or may not be returned.
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// This is identical to [LockableLruCache::lock_all_entries], but but it works on
+    /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
+    /// [HashMapOwnedGuard] that binds its lifetime to the [LockableLruCache] in that
+    /// [Arc]. Such a [HashMapOwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// The returned stream is `async` and therefore may return items much later than
+    /// when this function was called, but it only returns the entries that existed at
+    /// the time this function was called. Any items that were added since the call to
+    /// this function will not be returned by the stream, and any items that were
+    /// deleted since the function call will still be returned by the stream.
+    ///
+    /// TODO Test that this doesn't lock the whole map while the stream hasn't gotten
+    /// all locks yet and still allows locking/unlocking locks.
+    ///
     /// TODO Test
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
