@@ -269,20 +269,10 @@ where
 
     /// Lock a lock by key and return a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::blocking_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
-    /// returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// This function can be used from non-async contexts but will panic if used from async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
-    /// for an explanation of how exactly it works.
-    ///
-    /// Panics
-    /// -----
-    /// - This function might panic when called if the lock is already held by the current thread.
-    /// - This function will also panic when called from an `async` context.
-    ///   See documentation of [tokio::sync::Mutex] for details.
+    /// This is identical to [LockableLruCache::blocking_lock], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::blocking_lock], [LockableLruCache::blocking_lock_owned] works on an `Arc<LockableLruCache>`
+    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -387,15 +377,10 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
     ///
-    /// This is identical to [LockableLruCache::try_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
-    /// returns an [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [LruOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableLruCache::blocking_lock], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::blocking_lock], [LockableLruCache::blocking_lock_owned] works on an `Arc<LockableLruCache>`
+    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -441,16 +426,11 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableLruCache::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
-    /// an `async` callback to be specified for when the cache reaches its limit.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
+    /// This is identical to [LockableLruCache::try_lock], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::try_lock], [LockableLruCache::try_lock_async] takes an [AsyncLimit] instead of a [SyncLimit]
+    /// and therefore allows an `async` callback to be specified for when the cache reaches its limit.
     ///
     /// This function does not block and can be used in async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
@@ -506,20 +486,14 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableLruCache::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
-    /// an `async` callback to be specified for when the map reaches its limit.
+    /// This is identical to [LockableLruCache::try_lock_async], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::try_lock_async], [LockableLruCache::try_lock_owned_async] works on an `Arc<LockableLruCache>`
+    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::try_lock_async].
     ///
-    /// This is identical to [LockableLruCache::try_lock_async], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
-    /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
-    ///
-    /// This function does not block and can be used in async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableLruCache::try_lock_owned], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::try_lock_owned], [LockableLruCache::try_lock_owned_async] takes an [AsyncLimit] instead of a [SyncLimit]
+    /// and therefore allows an `async` callback to be specified for when the cache reaches its limit.
     ///
     /// Examples
     /// -----
@@ -568,7 +542,7 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
     /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
@@ -628,18 +602,12 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [LruOwnedGuard::insert] and [LruOwnedGuard::remove] on the returned entry guard.
     ///
-    /// This is identical to [LockableLruCache::async_lock], but it works on an `Arc<LockableLruCache>` instead of a [LockableLruCache] and
-    /// returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
-    /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
-    /// of the lock. When the guard goes out of scope, the lock will be unlocked.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableLruCache::async_lock], please see documentation for that function for more information.
+    /// But different to [LockableLruCache::async_lock], [LockableLruCache::async_lock_owned] works on an `Arc<LockableLruCache>`
+    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::async_lock].
     ///
     /// Examples
     /// -----
@@ -745,8 +713,8 @@ where
     ///
     /// This is identical to [LockableLruCache::lock_all_entries], but but it works on
     /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
-    /// [HashMapOwnedGuard] that binds its lifetime to the [LockableLruCache] in that
-    /// [Arc]. Such a [HashMapOwnedGuard] can be more easily moved around or cloned.
+    /// [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that
+    /// [Arc]. Such a [LruOwnedGuard] can be more easily moved around or cloned.
     ///
     /// The returned stream is `async` and therefore may return items much later than
     /// when this function was called, but it only returns the entries that existed at

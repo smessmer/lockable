@@ -217,20 +217,10 @@ where
 
     /// Lock a lock by key and return a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableHashMap::blocking_lock], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
-    /// returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// This function can be used from non-async contexts but will panic if used from async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
-    /// for an explanation of how exactly it works.
-    ///
-    /// Panics
-    /// -----
-    /// - This function might panic when called if the lock is already held by the current thread.
-    /// - This function will also panic when called from an `async` context.
-    ///   See documentation of [tokio::sync::Mutex] for details.
+    /// This is identical to [LockableHashMap::blocking_lock], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::blocking_lock], [LockableHashMap::blocking_lock_owned] works on an `Arc<LockableHashMap>`
+    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -328,17 +318,10 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableHashMap::try_lock], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
-    /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
-    ///
-    /// This function does not block and can be used in both async and non-async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [SyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableHashMap::try_lock], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::try_lock], [LockableHashMap::try_lock_owned] works on an `Arc<LockableHashMap>`
+    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::try_lock].
     ///
     /// Examples
     /// -----
@@ -377,16 +360,11 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableHashMap::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
-    /// an `async` callback to be specified for when the map reaches its limit.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
+    /// This is identical to [LockableHashMap::try_lock], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::try_lock], [LockableHashMap::try_lock_async] takes an [AsyncLimit] instead of a [SyncLimit]
+    /// and therefore allows an `async` callback to be specified for when the cache reaches its limit.
     ///
     /// This function does not block and can be used in async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
     ///
     /// Examples
     /// -----
@@ -442,20 +420,14 @@ where
 
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     ///
-    /// This is identical to [LockableHashMap::try_lock], but it takes an [AsyncLimit] instead of a [SyncLimit] and therefore allows
-    /// an `async` callback to be specified for when the map reaches its limit.
+    /// This is identical to [LockableHashMap::try_lock_async], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::try_lock_async], [LockableHashMap::try_lock_owned_async] works on an `Arc<LockableHashMap>`
+    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::try_lock_async].
     ///
-    /// This is identical to [LockableHashMap::try_lock_async], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
-    /// returns an [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
-    /// The lock will be unlocked when the guard is dropped.
-    ///
-    /// This function does not block and can be used in async contexts.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableHashMap::try_lock_owned], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::try_lock_owned], [LockableHashMap::try_lock_owned_async] takes an [AsyncLimit] instead of a [SyncLimit]
+    /// and therefore allows an `async` callback to be specified for when the cache reaches its limit.
     ///
     /// Examples
     /// -----
@@ -557,16 +529,10 @@ where
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
     /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
     ///
-    /// This is identical to [LockableHashMap::async_lock], but it works on an `Arc<LockableHashMap>` instead of a [LockableHashMap] and
-    /// returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc]. Such a [HashMapOwnedGuard] can be more
-    /// easily moved around or cloned.
-    ///
-    /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
-    /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
-    /// of the lock. When the guard goes out of scope, the lock will be unlocked.
-    ///
-    /// The `limit` parameter can be used to set a limit on the number of entries in the cache, see the documentation of [AsyncLimit]
-    /// for an explanation of how exactly it works.
+    /// This is identical to [LockableHashMap::async_lock], please see documentation for that function for more information.
+    /// But different to [LockableHashMap::async_lock], [LockableHashMap::async_lock_owned] works on an `Arc<LockableHashMap>`
+    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::async_lock].
     ///
     /// Examples
     /// -----

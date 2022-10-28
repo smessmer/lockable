@@ -49,14 +49,15 @@ where
     },
     /// Setting a [AsyncLimit::SoftLimit] for a locking call means that there is a limit on the number of entries.
     /// Entries that either have a value or that don't have a value but are currently locked count towards that limit,
-    /// see [LockableHashMap::num_entries_or_locked] or [LockableLruCache::num_entries_or_locked].
+    /// see [LockableHashMap::num_entries_or_locked](crate::LockableHashMap::num_entries_or_locked)
+    /// or [LockableLruCache::num_entries_or_locked](crate::LockableLruCache::num_entries_or_locked).
     ///
     /// If the locking call would cause the limit to be exceeded, the given `on_evict` callback will be called with
     /// some other entries. Those entries are already locked for you and `on_evict` is expected to delete those entries.
     /// It is possible that `on_evict` is called multiple times if the limit is still exceeded after the call.
-    /// The `on_evict` callback is responsible for deleting those entries, [LockableHashMap] and [LockableLruCache] will not
-    /// delete any entries for you. If `on_evict` doesn't delete any entries, you will end up in an infinite loop
-    /// because the total number of entries never gets below the limit.
+    /// The `on_evict` callback is responsible for deleting those entries, [LockableHashMap](crate::LockableHashMap)
+    /// and [LockableLruCache](crate::LockableLruCache) will not delete any entries for you. If `on_evict` doesn't delete
+    /// any entries, you will end up in an infinite loop because the total number of entries never gets below the limit.
     ///
     /// There is one exception, and this is why this is called a "soft" limit. If a call to a locking function has
     /// a [AsyncLimit::SoftLimit] set but there are no entries in the cache that are currently unlocked and that could
@@ -72,9 +73,10 @@ where
         /// this [AsyncLimit] set, the `on_evict` callback will be called.
         max_entries: NonZeroUsize,
         /// This callback will be called if `max_entries` is exceeded. It will be passed a list of guards for entries
-        /// and it will be expected to delete those entries from the [LockableHashMap] or [LockableLruCache]
-        /// using [Guard::remove]. This callback can also do any operations you need to clean up or flush data from
-        /// those entries before you delete them. It is `async` and can do asynchronous operations in its implementation.
+        /// and it will be expected to delete those entries from the [LockableHashMap](crate::LockableHashMap) or
+        /// [LockableLruCache](crate::LockableLruCache) using [Guard::remove]. This callback can also do any operations
+        /// you need to clean up or flush data from those entries before you delete them. It is `async` and can do
+        /// asynchronous operations in its implementation.
         on_evict: OnEvictFn,
     },
 }
@@ -148,14 +150,16 @@ where
     },
     /// Setting a [SyncLimit::SoftLimit] for a locking call means that there is a limit on the number of entries.
     /// Entries that either have a value or that don't have a value but are currently locked count towards that limit,
-    /// see [LockableHashMap::num_entries_or_locked] or [LockableLruCache::num_entries_or_locked].
+    /// see [LockableHashMap::num_entries_or_locked](crate::LockableHashMap::num_entries_or_locked) or
+    /// [LockableLruCache::num_entries_or_locked](crate::LockableLruCache::num_entries_or_locked).
     ///
     /// If the locking call would cause the limit to be exceeded, the given `on_evict` callback will be called with
     /// some other entries. Those entries are already locked for you and `on_evict` is expected to delete those entries.
     /// It is possible that `on_evict` is called multiple times if the limit is still exceeded after the call.
-    /// The `on_evict` callback is responsible for deleting those entries, [LockableHashMap] and [LockableLruCache] will not
-    /// delete any entries for you. If `on_evict` doesn't delete any entries, you will end up in an infinite loop
-    /// because the total number of entries never gets below the limit.
+    /// The `on_evict` callback is responsible for deleting those entries, [LockableHashMap](crate::LockableHashMap)
+    /// and [LockableLruCache](crate::LockableLruCache) will not delete any entries for you. If `on_evict` doesn't
+    /// delete any entries, you will end up in an infinite loop because the total number of entries never gets below the
+    /// limit.
     ///
     /// There is one exception, and this is why this is called a "soft" limit. If a call to a locking function has
     /// a [SyncLimit::SoftLimit] set but there are no entries in the cache that are currently unlocked and that could
@@ -171,10 +175,10 @@ where
         /// this [SyncLimit] set, the `on_evict` callback will be called.
         max_entries: NonZeroUsize,
         /// This callback will be called if `max_entries` is exceeded. It will be passed a list of guards for entries
-        /// and it will be expected to delete those entries from the [LockableHashMap] or [LockableLruCache]
-        /// using [Guard::remove]. This callback can also do any operations you need to clean up or flush data from
-        /// those entries before you delete them. It is not `async`. If you need an `async` callback, take a look
-        /// at the functions taking [AsyncLimit] instead of [SyncLimit].
+        /// and it will be expected to delete those entries from the [LockableHashMap](crate::LockableHashMap) or
+        /// [LockableLruCache](crate::LockableLruCache) using [Guard::remove]. This callback can also do any operations
+        /// you need to clean up or flush data from those entries before you delete them. It is not `async`. If you need
+        /// an `async` callback, take a look at the functions taking [AsyncLimit] instead of [SyncLimit].
         on_evict: OnEvictFn,
     },
 }
