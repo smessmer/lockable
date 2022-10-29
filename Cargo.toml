@@ -24,6 +24,7 @@ thiserror = "^1.0.37"
 # TODO If we remove the hack to create a runtime in blocking_lock, then we don't need the `rt-multi-thread` feature anymore, `rt` should be enough.
 tokio = {version = "^1.21.2", features = ["sync", "time", "rt-multi-thread"]}
 derive_more = "^0.99.17"
+async-trait = "0.1.58"
 
 [dev-dependencies]
 tokio = {version = "^1.21.2", features = ["sync", "time", "macros", "rt-multi-thread"]}
