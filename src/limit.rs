@@ -68,6 +68,9 @@ where
     /// them and no thread/task wants to give up their held locks. Note that this only protects against a deadlock
     /// caused by the limit. If those threads or tasks are trying to lock each others locks, you will still run into
     /// a deadlock.
+    ///
+    /// If this is used in a [LockableLruCache](crate::LockableLruCache), then `on_evict` will be called with the
+    /// least recently used entries, to allow for LRU style pruning.
     SoftLimit {
         /// The maximal allowed number of entries in the cache. If this number gets exceeded by a locking call with
         /// this [AsyncLimit] set, the `on_evict` callback will be called.
@@ -170,6 +173,9 @@ where
     /// them and no thread/task wants to give up their held locks. Note that this only protects against a deadlock
     /// caused by the limit. If those threads or tasks are trying to lock each others locks, you will still run into
     /// a deadlock.
+    ///
+    /// If this is used in a [LockableLruCache](crate::LockableLruCache), then `on_evict` will be called with the
+    /// least recently used entries, to allow for LRU style pruning.
     SoftLimit {
         /// The maximal allowed number of entries in the cache. If this number gets exceeded by a locking call with
         /// this [SyncLimit] set, the `on_evict` callback will be called.
