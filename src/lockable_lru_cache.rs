@@ -13,6 +13,7 @@ use super::guard::Guard;
 use super::hooks::Hooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
+use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>>>>>;
@@ -178,6 +179,22 @@ where
     map_impl: LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
 }
 
+impl<K, V> Lockable<K, V> for LockableLruCache<K, V>
+where
+    K: Eq + PartialEq + Hash + Clone,
+{
+    type Guard<'a> = Guard<
+    MapImpl<K, V>,
+    V,
+    LruCacheHooks,
+    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+> where
+    K: 'a,
+    V: 'a;
+
+    type OwnedGuard = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
+}
+
 impl<K, V> LockableLruCache<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
@@ -201,7 +218,7 @@ where
     /// Lock a key and return a guard with any potential cache entry for that key.
     /// Any changes to that entry will be persisted in the cache.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
-    /// a cache entry by itself. Cache entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
+    /// a cache entry by itself. Cache entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different thread, then the current thread blocks until it becomes available.
     /// Upon returning, the thread is the only thread with the lock held. A RAII guard is returned to allow scoped unlock
@@ -251,7 +268,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<LruGuard<'a, K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         OnEvictFn: Fn(
             Vec<
@@ -271,8 +288,8 @@ where
     ///
     /// This is identical to [LockableLruCache::blocking_lock], please see documentation for that function for more information.
     /// But different to [LockableLruCache::blocking_lock], [LockableLruCache::blocking_lock_owned] works on an `Arc<LockableLruCache>`
-    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
-    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::blocking_lock].
+    /// instead of a [LockableLruCache] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableLruCache::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -305,7 +322,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<LruOwnedGuard<K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         OnEvictFn: Fn(
             Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
@@ -317,7 +334,7 @@ where
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential cache entry for that key.
     /// Any changes to that entry will be persisted in the cache.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
-    /// a cache entry by itself. Cache entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
+    /// a cache entry by itself. Cache entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
@@ -359,7 +376,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruGuard<'a, K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         OnEvictFn: Fn(
             Vec<
@@ -379,8 +396,8 @@ where
     ///
     /// This is identical to [LockableLruCache::blocking_lock], please see documentation for that function for more information.
     /// But different to [LockableLruCache::blocking_lock], [LockableLruCache::blocking_lock_owned] works on an `Arc<LockableLruCache>`
-    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
-    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::blocking_lock].
+    /// instead of a [LockableLruCache] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableLruCache::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -415,7 +432,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruOwnedGuard<K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         OnEvictFn: Fn(
             Vec<Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>>,
@@ -467,7 +484,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruGuard<'a, K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
@@ -488,8 +505,8 @@ where
     ///
     /// This is identical to [LockableLruCache::try_lock_async], please see documentation for that function for more information.
     /// But different to [LockableLruCache::try_lock_async], [LockableLruCache::try_lock_owned_async] works on an `Arc<LockableLruCache>`
-    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
-    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::try_lock_async].
+    /// instead of a [LockableLruCache] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableLruCache::try_lock_async].
     ///
     /// This is identical to [LockableLruCache::try_lock_owned], please see documentation for that function for more information.
     /// But different to [LockableLruCache::try_lock_owned], [LockableLruCache::try_lock_owned_async] takes an [AsyncLimit] instead of a [SyncLimit]
@@ -530,7 +547,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<Option<LruOwnedGuard<K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
@@ -542,7 +559,7 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [LruGuard::insert] and [LruGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
     /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
@@ -582,7 +599,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<LruGuard<'a, K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
@@ -602,12 +619,12 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [LruOwnedGuard::insert] and [LruOwnedGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// This is identical to [LockableLruCache::async_lock], please see documentation for that function for more information.
     /// But different to [LockableLruCache::async_lock], [LockableLruCache::async_lock_owned] works on an `Arc<LockableLruCache>`
-    /// instead of a [LockableLruCache] and returns a [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
-    /// Such a [LruOwnedGuard] can be more easily moved around or cloned than the [LruGuard] returned by [LockableLruCache::async_lock].
+    /// instead of a [LockableLruCache] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableLruCache::async_lock].
     ///
     /// Examples
     /// -----
@@ -641,7 +658,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<LruOwnedGuard<K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn:
@@ -677,7 +694,7 @@ where
     pub fn lock_entries_unlocked_for_at_least_owned(
         self: &Arc<Self>,
         duration: Duration,
-    ) -> impl Iterator<Item = LruOwnedGuard<K, V>> {
+    ) -> impl Iterator<Item = <Self as Lockable<K, V>>::OwnedGuard> {
         // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
         let now = Instant::now();
         LockableMapImpl::lock_all_unlocked(Arc::clone(self)).filter(move |entry| {
@@ -703,7 +720,9 @@ where
     /// all locks yet and still allows locking/unlocking locks.
     ///
     /// TODO Test
-    pub async fn lock_all_entries(&self) -> impl Stream<Item = LruGuard<'_, K, V>> {
+    pub async fn lock_all_entries(
+        &self,
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
         LockableMapImpl::lock_all(&self.map_impl).await
     }
 
@@ -713,8 +732,8 @@ where
     ///
     /// This is identical to [LockableLruCache::lock_all_entries], but but it works on
     /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
-    /// [LruOwnedGuard] that binds its lifetime to the [LockableLruCache] in that
-    /// [Arc]. Such a [LruOwnedGuard] can be more easily moved around or cloned.
+    /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that
+    /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
     ///
     /// The returned stream is `async` and therefore may return items much later than
     /// when this function was called, but it only returns the entries that existed at
@@ -728,7 +747,7 @@ where
     /// TODO Test
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
-    ) -> impl Stream<Item = LruOwnedGuard<K, V>> {
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
         LockableMapImpl::lock_all(Arc::clone(self)).await
     }
 }
@@ -741,23 +760,6 @@ where
         Self::new()
     }
 }
-
-/// A non-owning guard holding a lock for an entry in a [LockableLruCache].
-/// This guard is created via [LockableLruCache::blocking_lock], [LockableLruCache::async_lock]
-/// or [LockableLruCache::try_lock] and its lifetime is bound to the lifetime
-/// of the [LockableLruCache].
-///
-/// See the documentation of [Guard] for methods.
-pub type LruGuard<'a, K, V> =
-    Guard<MapImpl<K, V>, V, LruCacheHooks, &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>>;
-
-/// A owning guard holding a lock for an entry in a [LockableLruCache].
-/// This guard is created via [LockableLruCache::blocking_lock_owned], [LockableLruCache::async_lock_owned]
-/// or [LockableLruCache::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableLruCache]
-/// within its [Arc].
-///
-/// See the documentation of [Guard] for methods.
-pub type LruOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.

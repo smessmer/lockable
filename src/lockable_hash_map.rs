@@ -11,6 +11,7 @@ use super::guard::Guard;
 use super::hooks::NoopHooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
+use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
@@ -126,6 +127,22 @@ where
     map_impl: LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
 }
 
+impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
+where
+    K: Eq + PartialEq + Hash + Clone,
+{
+    type Guard<'a> = Guard<
+    MapImpl<K, V>,
+    V,
+    NoopHooks,
+    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+> where
+    K: 'a,
+    V: 'a;
+
+    type OwnedGuard = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+}
+
 impl<K, V> LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
@@ -149,7 +166,7 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different thread, then the current thread blocks until it becomes available.
     /// Upon returning, the thread is the only thread with the lock held. A RAII guard is returned to allow scoped unlock
@@ -199,7 +216,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<HashMapGuard<'_, K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         OnEvictFn: Fn(
             Vec<
@@ -219,8 +236,8 @@ where
     ///
     /// This is identical to [LockableHashMap::blocking_lock], please see documentation for that function for more information.
     /// But different to [LockableHashMap::blocking_lock], [LockableHashMap::blocking_lock_owned] works on an `Arc<LockableHashMap>`
-    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
-    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::blocking_lock].
+    /// instead of a [LockableHashMap] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableHashMap::blocking_lock].
     ///
     /// Examples
     /// -----
@@ -246,7 +263,7 @@ where
         self: &Arc<Self>,
         key: K,
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
-    ) -> Result<HashMapOwnedGuard<K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         OnEvictFn: Fn(
             Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
@@ -258,7 +275,7 @@ where
     /// Attempts to acquire the lock with the given key and if successful, returns a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
@@ -300,7 +317,7 @@ where
             E,
             OnEvictFn,
         >,
-    ) -> Result<Option<HashMapGuard<'_, K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         OnEvictFn: Fn(
             Vec<
@@ -320,8 +337,8 @@ where
     ///
     /// This is identical to [LockableHashMap::try_lock], please see documentation for that function for more information.
     /// But different to [LockableHashMap::try_lock], [LockableHashMap::try_lock_owned] works on an `Arc<LockableHashMap>`
-    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
-    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::try_lock].
+    /// instead of a [LockableHashMap] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableHashMap::try_lock].
     ///
     /// Examples
     /// -----
@@ -349,7 +366,7 @@ where
         self: &Arc<Self>,
         key: K,
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
-    ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         OnEvictFn: Fn(
             Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
@@ -401,7 +418,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<Option<HashMapGuard<'a, K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
@@ -422,8 +439,8 @@ where
     ///
     /// This is identical to [LockableHashMap::try_lock_async], please see documentation for that function for more information.
     /// But different to [LockableHashMap::try_lock_async], [LockableHashMap::try_lock_owned_async] works on an `Arc<LockableHashMap>`
-    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
-    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::try_lock_async].
+    /// instead of a [LockableHashMap] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableHashMap::try_lock_async].
     ///
     /// This is identical to [LockableHashMap::try_lock_owned], please see documentation for that function for more information.
     /// But different to [LockableHashMap::try_lock_owned], [LockableHashMap::try_lock_owned_async] takes an [AsyncLimit] instead of a [SyncLimit]
@@ -456,7 +473,7 @@ where
         self: &Arc<Self>,
         key: K,
         limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
-    ) -> Result<Option<HashMapOwnedGuard<K, V>>, E>
+    ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
@@ -467,7 +484,7 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// If the lock with this key is currently locked by a different task, then the current tasks `await`s until it becomes available.
     /// Upon returning, the task is the only task with the lock held. A RAII guard is returned to allow scoped unlock
@@ -507,7 +524,7 @@ where
             F,
             OnEvictFn,
         >,
-    ) -> Result<HashMapGuard<'_, K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(
@@ -527,12 +544,12 @@ where
     /// Lock a key and return a guard with any potential map entry for that key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other tasks from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [HashMapGuard::insert] and [HashMapGuard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
     ///
     /// This is identical to [LockableHashMap::async_lock], please see documentation for that function for more information.
     /// But different to [LockableHashMap::async_lock], [LockableHashMap::async_lock_owned] works on an `Arc<LockableHashMap>`
-    /// instead of a [LockableHashMap] and returns a [HashMapOwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
-    /// Such a [HashMapOwnedGuard] can be more easily moved around or cloned than the [HashMapGuard] returned by [LockableHashMap::async_lock].
+    /// instead of a [LockableHashMap] and returns a [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that [Arc].
+    /// Such a [Lockable::OwnedGuard] can be more easily moved around or cloned than the [Lockable::Guard] returned by [LockableHashMap::async_lock].
     ///
     /// Examples
     /// -----
@@ -558,7 +575,7 @@ where
         self: &Arc<Self>,
         key: K,
         limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
-    ) -> Result<HashMapOwnedGuard<K, V>, E>
+    ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
@@ -592,23 +609,6 @@ where
         Self::new()
     }
 }
-
-/// A non-owning guard holding a lock for an entry in a [LockableHashMap].
-/// This guard is created via [LockableHashMap::blocking_lock], [LockableHashMap::async_lock]
-/// or [LockableHashMap::try_lock] and its lifetime is bound to the lifetime
-/// of the [LockableHashMap].
-///
-/// See the documentation of [Guard] for methods.
-pub type HashMapGuard<'a, K, V> =
-    Guard<MapImpl<K, V>, V, NoopHooks, &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>>;
-
-/// A owning guard holding a lock for an entry in a [LockableHashMap].
-/// This guard is created via [LockableHashMap::blocking_lock_owned], [LockableHashMap::async_lock_owned]
-/// or [LockableHashMap::try_lock_owned] and its lifetime is bound to the lifetime of the [LockableHashMap]
-/// within its [Arc].
-///
-/// See the documentation of [Guard] for methods.
-pub type HashMapOwnedGuard<K, V> = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
 
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
