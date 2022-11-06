@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::guard::Guard;
+use super::guard::GuardImpl;
 use super::hooks::NoopHooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
@@ -78,7 +78,7 @@ where
 ///
 /// ```
 /// use anyhow::Result;
-/// use lockable::{AsyncLimit, LockableHashMap};
+/// use lockable::{AsyncLimit, Guard, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(lockable_map: &LockableHashMap<i64, String>) -> Result<()> {
@@ -106,7 +106,7 @@ where
 /// You can use an arbitrary type to index hash map entries by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone].
 ///
 /// ```
-/// use lockable::{AsyncLimit, LockableHashMap};
+/// use lockable::{AsyncLimit, Guard, LockableHashMap};
 ///
 /// #[derive(PartialEq, Eq, Hash, Clone)]
 /// struct CustomLockKey(u32);
@@ -131,7 +131,7 @@ impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type Guard<'a> = Guard<
+    type Guard<'a> = GuardImpl<
     MapImpl<K, V>,
     V,
     NoopHooks,
@@ -140,7 +140,7 @@ where
     K: 'a,
     V: 'a;
 
-    type OwnedGuard = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+    type OwnedGuard = GuardImpl<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
 }
 
 impl<K, V> LockableHashMap<K, V>

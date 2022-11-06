@@ -3,7 +3,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
-use crate::guard::Guard;
+use crate::guard::GuardImpl;
 use crate::hooks::Hooks;
 use crate::lockable_map_impl::{FromInto, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
@@ -28,7 +28,7 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
     F: Future<Output = Result<(), E>>,
-    OnEvictFn: Fn(Vec<Guard<M, V, H, P>>) -> F,
+    OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> F,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -92,7 +92,7 @@ impl<M, V, H, P>
         P,
         Never,
         std::future::Ready<Result<(), Never>>,
-        fn(Vec<Guard<M, V, H, P>>) -> std::future::Ready<Result<(), Never>>,
+        fn(Vec<GuardImpl<M, V, H, P>>) -> std::future::Ready<Result<(), Never>>,
     >
 where
     M: ArcMutexMapLike,
@@ -132,7 +132,7 @@ where
     H: Hooks<M::V>,
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
-    OnEvictFn: Fn(Vec<Guard<M, V, H, P>>) -> Result<(), E>,
+    OnEvictFn: Fn(Vec<GuardImpl<M, V, H, P>>) -> Result<(), E>,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -189,7 +189,7 @@ where
     },
 }
 
-impl<M, V, H, P> SyncLimit<M, V, H, P, Never, fn(Vec<Guard<M, V, H, P>>) -> Result<(), Never>>
+impl<M, V, H, P> SyncLimit<M, V, H, P, Never, fn(Vec<GuardImpl<M, V, H, P>>) -> Result<(), Never>>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,

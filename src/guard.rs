@@ -9,8 +9,65 @@ use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
+pub trait Guard<K, V> {
+    /// Returns the key of the entry that was locked with this guard.
+    fn key(&self) -> &K;
+
+    /// Returns the value of the entry that was locked with this guard.
+    ///
+    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
+    /// and no other thread or task can lock the same key.
+    fn value(&self) -> Option<&V>;
+
+    /// Returns the value of the entry that was locked with this guard.
+    ///
+    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
+    /// and no other thread or task can lock the same key.
+    fn value_mut(&mut self) -> Option<&mut V>;
+
+    /// Removes the entry this guard has locked from the map.
+    ///
+    /// If the entry existed, its value is returned. If the entry didn't exist, [None] is returned.
+    ///
+    /// TODO Test series of insert/remove calls on same guard
+    fn remove(&mut self) -> Option<V>;
+
+    /// Inserts a value for the entry this guard has locked to the map.
+    ///
+    /// If the entry existed already, its old value is returned. If the entry didn't exist yet, [None] is returned.
+    /// In both cases, the map will contain the new value after the call.
+    ///
+    /// TODO Test return value
+    fn insert(&mut self, value: V) -> Option<V>;
+
+    /// Inserts a value for the entry this guard has locked to the map if it didn't exist yet.
+    /// If it already existed, this call returns [TryInsertError::AlreadyExists] instead.
+    ///
+    /// This function also returns a mutable reference to the new entry, which can be used to further modify it.
+    ///
+    /// TODO Test
+    fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>>;
+
+    /// Returns a mutable reference to the value of the entry this guard has locked.
+    ///
+    /// If the entry doesn't exist, then `value_fn` is invoked to create it, the value
+    /// is added to the map, and then a mutable reference to it is returned.
+    ///
+    /// TODO Test
+    fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V;
+
+    /// Returns a mutable reference to the value of the entry this guard has locked.
+    ///
+    /// If the entry doesn't exist, then `value` is inserted into the map for this entry,
+    /// and then a mutable reference to it is returned.
+    ///
+    /// TODO Test
+    fn value_or_insert(&mut self, value: V) -> &mut V;
+}
+
+/// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
-pub struct Guard<M, V, H, P>
+pub struct GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -25,7 +82,7 @@ where
     _v: PhantomData<V>,
 }
 
-impl<M, V, H, P> Guard<M, V, H, P>
+impl<M, V, H, P> GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -56,73 +113,64 @@ where
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
-    /// Returns the key of the entry that was locked with this guard.
-    #[inline]
-    pub fn key(&self) -> &M::K {
-        &self.key
-    }
-
     #[inline]
     pub(super) fn value_raw(&self) -> Option<&M::V> {
         self._guard().value.as_ref()
     }
 
-    /// Returns the value of the entry that was locked with this guard.
+    /// Returns the map this guard was created from. This is the map containing the entry
+    /// locked by this guard.
     ///
-    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
-    /// and no other thread or task can lock the same key.
+    /// TODO Test
     #[inline]
-    pub fn value(&self) -> Option<&V> {
+    pub fn map(&self) -> &P {
+        &self.map
+    }
+}
+
+impl<M, V, H, P> Guard<M::K, V> for GuardImpl<M, V, H, P>
+where
+    M: ArcMutexMapLike,
+    H: Hooks<M::V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    P: Borrow<LockableMapImpl<M, V, H>>,
+{
+    #[inline]
+    fn key(&self) -> &M::K {
+        &self.key
+    }
+
+    #[inline]
+    fn value(&self) -> Option<&V> {
         // We're returning Option<&V> instead of &Option<V> so that
         // user code can't change the Option from None to Some or the other
         // way round. They should use Self::insert() and Self::remove() for that.
         self.value_raw().map(|v| v.borrow())
     }
 
-    /// Returns the value of the entry that was locked with this guard.
-    ///
-    /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
-    /// and no other thread or task can lock the same key.
     #[inline]
-    pub fn value_mut(&mut self) -> Option<&mut V> {
+    fn value_mut(&mut self) -> Option<&mut V> {
         // We're returning Option<&M::V> instead of &Option<M::V> so that
         // user code can't change the Option from None to Some or the other
         // way round. They should use Self::insert() and Self::remove() for that.
         self._guard_mut().value.as_mut().map(|v| v.borrow_mut())
     }
 
-    /// Removes the entry this guard has locked from the map.
-    ///
-    /// If the entry existed, its value is returned. If the entry didn't exist, [None] is returned.
-    ///
-    /// TODO Test series of insert/remove calls on same guard
     #[inline]
-    pub fn remove(&mut self) -> Option<V> {
+    fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it
         let removed_value = self._guard_mut().value.take();
         removed_value.map(|v| v.fi_into())
     }
 
-    /// Inserts a value for the entry this guard has locked to the map.
-    ///
-    /// If the entry existed already, its old value is returned. If the entry didn't exist yet, [None] is returned.
-    /// In both cases, the map will contain the new value after the call.
-    ///
-    /// TODO Test return value
     #[inline]
-    pub fn insert(&mut self, value: V) -> Option<V> {
+    fn insert(&mut self, value: V) -> Option<V> {
         let old_value = self._guard_mut().value.replace(M::V::fi_from(value));
         old_value.map(|v| v.fi_into())
     }
 
-    /// Inserts a value for the entry this guard has locked to the map if it didn't exist yet.
-    /// If it already existed, this call returns [TryInsertError::AlreadyExists] instead.
-    ///
-    /// This function also returns a mutable reference to the new entry, which can be used to further modify it.
-    ///
-    /// TODO Test
     #[inline]
-    pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
+    fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
         let guard = self._guard_mut();
         if guard.value.is_none() {
             guard.value = Some(M::V::fi_from(value));
@@ -136,14 +184,8 @@ where
         }
     }
 
-    /// Returns a mutable reference to the value of the entry this guard has locked.
-    ///
-    /// If the entry doesn't exist, then `value_fn` is invoked to create it, the value
-    /// is added to the map, and then a mutable reference to it is returned.
-    ///
-    /// TODO Test
     #[inline]
-    pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
+    fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
         let guard = self._guard_mut();
         if guard.value.is_none() {
             guard.value = Some(M::V::fi_from(value_fn()));
@@ -155,28 +197,13 @@ where
             .borrow_mut()
     }
 
-    /// Returns a mutable reference to the value of the entry this guard has locked.
-    ///
-    /// If the entry doesn't exist, then `value` is inserted into the map for this entry,
-    /// and then a mutable reference to it is returned.
-    ///
-    /// TODO Test
     #[inline]
-    pub fn value_or_insert(&mut self, value: V) -> &mut V {
+    fn value_or_insert(&mut self, value: V) -> &mut V {
         self.value_or_insert_with(move || value)
-    }
-
-    /// Returns the map this guard was created from. This is the map containing the entry
-    /// locked by this guard.
-    ///
-    /// TODO Test
-    #[inline]
-    pub fn map(&self) -> &P {
-        &self.map
     }
 }
 
-impl<M, V, H, P> Drop for Guard<M, V, H, P>
+impl<M, V, H, P> Drop for GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
@@ -192,7 +219,7 @@ where
     }
 }
 
-impl<M, V, H, P> Debug for Guard<M, V, H, P>
+impl<M, V, H, P> Debug for GuardImpl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,

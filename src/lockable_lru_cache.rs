@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
-use super::guard::Guard;
+use super::guard::GuardImpl;
 use super::hooks::Hooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
@@ -109,7 +109,7 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// This class is only available if the `lru` crate feature is enabled.
 ///
 /// ```
-/// use lockable::{AsyncLimit, LockableLruCache};
+/// use lockable::{AsyncLimit, Guard, LockableLruCache};
 ///
 /// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -130,7 +130,7 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// ```
 /// use anyhow::Result;
-/// use lockable::{AsyncLimit, LockableLruCache};
+/// use lockable::{AsyncLimit, Guard, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// async fn insert_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<()> {
@@ -183,7 +183,7 @@ impl<K, V> Lockable<K, V> for LockableLruCache<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type Guard<'a> = Guard<
+    type Guard<'a> = GuardImpl<
     MapImpl<K, V>,
     V,
     LruCacheHooks,
@@ -192,7 +192,7 @@ where
     K: 'a,
     V: 'a;
 
-    type OwnedGuard = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
+    type OwnedGuard = GuardImpl<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
 }
 
 impl<K, V> LockableLruCache<K, V>

@@ -11,6 +11,7 @@ macro_rules! instantiate_lockable_tests {
         use std::sync::{Arc, Mutex};
         use std::thread::{self, JoinHandle};
         use std::time::Duration;
+        use crate::Guard;
 
         // Launch a thread that
         // 1. locks the given key
