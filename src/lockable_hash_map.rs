@@ -218,16 +218,7 @@ where
         >,
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
-        OnEvictFn: Fn(
-            Vec<
-                Guard<
-                    MapImpl<K, V>,
-                    V,
-                    NoopHooks,
-                    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-                >,
-            >,
-        ) -> Result<(), E>,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(&self.map_impl, key, limit)
     }
@@ -265,9 +256,7 @@ where
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
-        OnEvictFn: Fn(
-            Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
-        ) -> Result<(), E>,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
     }
@@ -319,16 +308,7 @@ where
         >,
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
-        OnEvictFn: Fn(
-            Vec<
-                Guard<
-                    MapImpl<K, V>,
-                    V,
-                    NoopHooks,
-                    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-                >,
-            >,
-        ) -> Result<(), E>,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(&self.map_impl, key, limit)
     }
@@ -368,9 +348,7 @@ where
         limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
-        OnEvictFn: Fn(
-            Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>,
-        ) -> Result<(), E>,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
     }
@@ -421,16 +399,7 @@ where
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(
-            Vec<
-                Guard<
-                    MapImpl<K, V>,
-                    V,
-                    NoopHooks,
-                    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-                >,
-            >,
-        ) -> F,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
     {
         LockableMapImpl::try_lock_async(&self.map_impl, key, limit).await
     }
@@ -476,7 +445,7 @@ where
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
     {
         LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
@@ -527,16 +496,7 @@ where
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(
-            Vec<
-                Guard<
-                    MapImpl<K, V>,
-                    V,
-                    NoopHooks,
-                    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-                >,
-            >,
-        ) -> F,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
     {
         LockableMapImpl::async_lock(&self.map_impl, key, limit).await
     }
@@ -578,7 +538,7 @@ where
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>>) -> F,
+        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
     {
         LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }
