@@ -95,8 +95,7 @@ where
     ///
     /// If the entry existed, its value is returned. If the entry didn't exist, [None] is returned.
     ///
-    /// TODO Test return value
-    /// TODO Test this. For example, do we have a test trying to use the guard after insert/remove calls?
+    /// TODO Test series of insert/remove calls on same guard
     #[inline]
     pub fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it

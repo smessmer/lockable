@@ -383,7 +383,7 @@ macro_rules! instantiate_lockable_tests {
                 }
             }
 
-            mod remove {
+            mod remove_existing_entry {
                 use super::*;
 
                 #[tokio::test]
@@ -396,7 +396,7 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
@@ -413,7 +413,7 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
@@ -428,7 +428,7 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.blocking_lock(4, SyncLimit::no_limit()).unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
@@ -443,7 +443,7 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
@@ -460,7 +460,7 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
@@ -477,7 +477,191 @@ macro_rules! instantiate_lockable_tests {
 
                     assert_eq!(1, pool.num_entries_or_locked());
                     let mut guard = pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap();
-                    guard.remove();
+                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap().value(), None);
+                }
+            }
+
+            mod remove_nonexisting_entry_in_nonempty_map {
+                use super::*;
+
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.async_lock(4, AsyncLimit::no_limit())
+                        .await
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock(5, AsyncLimit::no_limit()).await.unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.async_lock_owned(4, AsyncLimit::no_limit())
+                        .await
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.async_lock_owned(5, AsyncLimit::no_limit()).await.unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.blocking_lock(4, SyncLimit::no_limit()).unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock(4, SyncLimit::no_limit()).unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    pool.try_lock(4, SyncLimit::no_limit())
+                        .unwrap()
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock(5, SyncLimit::no_limit()).unwrap().unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    pool.try_lock_owned(4, SyncLimit::no_limit())
+                        .unwrap()
+                        .unwrap()
+                        .insert(String::from("Cache Entry Value"));
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    let mut guard = pool.try_lock_owned(5, SyncLimit::no_limit()).unwrap().unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(1, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock_owned(4, SyncLimit::no_limit()).unwrap().unwrap().value(), Some(&String::from("Cache Entry Value")));
+                }
+            }
+
+            mod remove_nonexisting_entry_in_empty_map {
+                use super::*;
+
+                #[tokio::test]
+                async fn async_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.async_lock(5, AsyncLimit::no_limit()).await.unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock(4, AsyncLimit::no_limit()).await.unwrap().value(), None);
+                }
+
+                #[tokio::test]
+                async fn async_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.async_lock_owned(5, AsyncLimit::no_limit()).await.unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.async_lock_owned(4, AsyncLimit::no_limit()).await.unwrap().value(), None);
+                }
+
+                #[test]
+                fn blocking_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.blocking_lock(5, SyncLimit::no_limit()).unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock(4, SyncLimit::no_limit()).unwrap().value(), None);
+                }
+
+                #[test]
+                fn blocking_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.blocking_lock_owned(5, SyncLimit::no_limit()).unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.blocking_lock_owned(4, SyncLimit::no_limit()).unwrap().value(), None);
+                }
+
+                #[test]
+                fn try_lock() {
+                    let pool = $lockable_type::<isize, String>::new();
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.try_lock(5, SyncLimit::no_limit()).unwrap().unwrap();
+                    assert_eq!(None, guard.remove());
+                    std::mem::drop(guard);
+
+                    assert_eq!(0, pool.num_entries_or_locked());
+                    assert_eq!(pool.try_lock(4, SyncLimit::no_limit()).unwrap().unwrap().value(), None);
+                }
+
+                #[test]
+                fn try_lock_owned() {
+                    let pool = Arc::new($lockable_type::<isize, String>::new());
+                    assert_eq!(0, pool.num_entries_or_locked());
+
+                    let mut guard = pool.try_lock_owned(5, SyncLimit::no_limit()).unwrap().unwrap();
+                    assert_eq!(None, guard.remove());
                     std::mem::drop(guard);
 
                     assert_eq!(0, pool.num_entries_or_locked());
