@@ -27,3 +27,4 @@ derive_more = "^0.99.17"
 
 [dev-dependencies]
 tokio = {version = "^1.21.2", features = ["sync", "time", "macros", "rt-multi-thread"]}
+async-trait = "^0.1.58"

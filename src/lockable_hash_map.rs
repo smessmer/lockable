@@ -382,7 +382,6 @@ where
     /// assert!(guard3.is_some());
     /// # Ok::<(), anyhow::Error>(())}).unwrap();
     /// ```
-    /// TODO Test this, we're only testing try_lock so far, not try_lock_async
     #[inline]
     pub async fn try_lock_async<'a, E, F, OnEvictFn>(
         &'a self,
@@ -436,7 +435,6 @@ where
     /// assert!(guard3.is_some());
     /// # Ok::<(), anyhow::Error>(())}).unwrap();
     /// ```
-    /// TODO Test, we're only testing try_lock_owned so far, not try_lock_owned_async
     #[inline]
     pub async fn try_lock_owned_async<E, F, OnEvictFn>(
         self: &Arc<Self>,
