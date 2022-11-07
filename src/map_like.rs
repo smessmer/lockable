@@ -18,6 +18,11 @@ type Entry<V> = Arc<Mutex<EntryValue<V>>>;
 pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
     type K: Eq + PartialEq + Hash + Clone;
     type V;
+    type ItemIter<'a>: Iterator<Item = (&'a Self::K, &'a Entry<Self::V>)>
+    where
+        Self: 'a,
+        Self::K: 'a,
+        Self::V: 'a;
 
     fn new() -> Self;
 
@@ -29,7 +34,5 @@ pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
 
     fn remove(&mut self, key: &Self::K) -> Option<Entry<Self::V>>;
 
-    // TODO No box dyn
-    #[allow(clippy::type_complexity)]
-    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Entry<Self::V>)> + '_>;
+    fn iter(&self) -> Self::ItemIter<'_>;
 }

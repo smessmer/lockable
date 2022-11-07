@@ -22,6 +22,10 @@ where
 {
     type K = K;
     type V = V;
+    type ItemIter<'a> = std::collections::hash_map::Iter<'a, K, Arc<Mutex<EntryValue<V>>>>
+    where
+        K: 'a,
+        V: 'a;
 
     fn new() -> Self {
         Self::new()
@@ -47,8 +51,8 @@ where
         self.remove(key)
     }
 
-    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_> {
-        Box::new(HashMap::iter(self))
+    fn iter(&self) -> Self::ItemIter<'_> {
+        HashMap::iter(self)
     }
 }
 

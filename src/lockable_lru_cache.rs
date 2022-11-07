@@ -26,6 +26,10 @@ where
 {
     type K = K;
     type V = CacheEntry<V>;
+    type ItemIter<'a> = lru::Iter<'a, K, Arc<Mutex<EntryValue<CacheEntry<V>>>>>
+    where
+        K: 'a,
+        V: 'a;
 
     fn new() -> Self {
         Self::unbounded()
@@ -50,8 +54,8 @@ where
         self.pop(key)
     }
 
-    fn iter(&self) -> Box<dyn Iterator<Item = (&Self::K, &Arc<Mutex<EntryValue<Self::V>>>)> + '_> {
-        Box::new(LruCache::iter(self))
+    fn iter(&self) -> Self::ItemIter<'_> {
+        LruCache::iter(self)
     }
 }
 
