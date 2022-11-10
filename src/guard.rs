@@ -107,8 +107,6 @@ where
     ///
     /// If the entry existed already, its old value is returned. If the entry didn't exist yet, [None] is returned.
     /// In both cases, the map will contain the new value after the call.
-    ///
-    /// TODO Test return value
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
         let old_value = self._guard_mut().value.replace(M::V::fi_from(value));
@@ -119,8 +117,6 @@ where
     /// If it already existed, this call returns [TryInsertError::AlreadyExists] instead.
     ///
     /// This function also returns a mutable reference to the new entry, which can be used to further modify it.
-    ///
-    /// TODO Test
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
         let guard = self._guard_mut();
