@@ -1,5 +1,6 @@
 //! TODO Crate level documentation
 
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod guard;
