@@ -136,8 +136,6 @@ where
     ///
     /// If the entry doesn't exist, then `value_fn` is invoked to create it, the value
     /// is added to the map, and then a mutable reference to it is returned.
-    ///
-    /// TODO Test
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
         let guard = self._guard_mut();
@@ -155,20 +153,9 @@ where
     ///
     /// If the entry doesn't exist, then `value` is inserted into the map for this entry,
     /// and then a mutable reference to it is returned.
-    ///
-    /// TODO Test
     #[inline]
     pub fn value_or_insert(&mut self, value: V) -> &mut V {
         self.value_or_insert_with(move || value)
-    }
-
-    /// Returns the map this guard was created from. This is the map containing the entry
-    /// locked by this guard.
-    ///
-    /// TODO Test
-    #[inline]
-    pub fn map(&self) -> &P {
-        &self.map
     }
 }
 
