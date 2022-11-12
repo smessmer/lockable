@@ -501,486 +501,506 @@ macro_rules! instantiate_lockable_tests {
         mod guard {
             use super::*;
 
-            mod insert_existing_entry {
+            mod insert {
                 use super::*;
 
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    let prev_value = locking.lock(&pool, 4).insert(String::from("Previous value"));
-                    assert_eq!(None, prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                mod existing_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4);
-                    let prev_value = guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(Some(String::from("Previous value")), prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        let prev_value = locking.lock(&pool, 4).insert(String::from("Previous value"));
+                        assert_eq!(None, prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4);
+                        let prev_value = guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(Some(String::from("Previous value")), prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        let prev_value = locking.lock(&pool, 4).await.insert(String::from("Previous value"));
+                        assert_eq!(None, prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4).await;
+                        let prev_value = guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(Some(String::from("Previous value")), prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    let prev_value = locking.lock(&pool, 4).await.insert(String::from("Previous value"));
-                    assert_eq!(None, prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                mod nonexisting_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4).await;
-                    let prev_value = guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(Some(String::from("Previous value")), prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4);
+                        let prev_value = guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(None, prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4).await;
+                        let prev_value = guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(None, prev_value);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
             }
 
-            mod insert_nonexisting_entry {
+            mod try_insert {
                 use super::*;
 
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod existing_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4);
-                    let prev_value = guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(None, prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).insert(String::from("Previous Value"));
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                        let mut guard = locking.lock(&pool, 4);
+                        let result = guard.try_insert(String::from("Cache Entry Value"));
+                        assert_eq!(Err(TryInsertError::AlreadyExists{value: String::from("Cache Entry Value")}), result);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("Previous Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).await.insert(String::from("Previous Value"));
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4).await;
+                        let result = guard.try_insert(String::from("Cache Entry Value"));
+                        assert_eq!(Err(TryInsertError::AlreadyExists{value: String::from("Cache Entry Value")}), result);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("Previous Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod nonexisting_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4).await;
-                    let prev_value = guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(None, prev_value);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                        let mut guard = locking.lock(&pool, 4);
+                        let new_entry = guard.try_insert(String::from("Cache Entry Value"));
+                        assert_eq!(String::from("Cache Entry Value"), *new_entry.unwrap());
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4).await;
+                        let new_entry = guard.try_insert(String::from("Cache Entry Value"));
+                        assert_eq!(String::from("Cache Entry Value"), *new_entry.unwrap());
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                mod nonexisting_entry_and_modify_it_through_the_returned_reference {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4);
+                        let new_entry = guard.try_insert(String::from("Cache Entry Value"));
+                        *new_entry.unwrap() = String::from("New Value");
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("New Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 4).await;
+                        let new_entry = guard.try_insert(String::from("Cache Entry Value"));
+                        *new_entry.unwrap() = String::from("New Value");
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+
+                        std::mem::drop(guard);
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("New Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
             }
 
-            mod try_insert_existing_entry {
+            mod remove {
                 use super::*;
 
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4).insert(String::from("Previous Value"));
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                mod existing_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4);
-                    let result = guard.try_insert(String::from("Cache Entry Value"));
-                    assert_eq!(Err(TryInsertError::AlreadyExists{value: String::from("Cache Entry Value")}), result);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("Previous Value"))
-                    );
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4)
+                            .insert(String::from("Cache Entry Value"));
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 4);
+                        assert_eq!(Some("Cache Entry Value".into()), guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).value(), None);
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4)
+                            .await
+                            .insert(String::from("Cache Entry Value"));
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 4).await;
+                        assert_eq!(Some("Cache Entry Value".into()), guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).await.value(), None);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4).await.insert(String::from("Previous Value"));
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                mod nonexisting_entry_in_nonempty_map {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4).await;
-                    let result = guard.try_insert(String::from("Cache Entry Value"));
-                    assert_eq!(Err(TryInsertError::AlreadyExists{value: String::from("Cache Entry Value")}), result);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("Previous Value"))
-                    );
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4)
+                            .insert(String::from("Cache Entry Value"));
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 5);
+                        assert_eq!(None, guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).value(), Some(&String::from("Cache Entry Value")));
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4)
+                            .await
+                            .insert(String::from("Cache Entry Value"));
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 5).await;
+                        assert_eq!(None, guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).await.value(), Some(&String::from("Cache Entry Value")));
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                mod nonexisting_entry_in_empty_map {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 5);
+                        assert_eq!(None, guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).value(), None);
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+
+                        let mut guard = locking.lock(&pool, 5).await;
+                        assert_eq!(None, guard.remove());
+                        std::mem::drop(guard);
+
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(locking.lock(&pool, 4).await.value(), None);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
             }
 
-            mod try_insert_nonexisting_entry {
+            mod value {
                 use super::*;
 
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod existing_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4);
-                    let new_entry = guard.try_insert(String::from("Cache Entry Value"));
-                    assert_eq!(String::from("Cache Entry Value"), *new_entry.unwrap());
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        let mut guard = locking.lock(&pool, 4);
+                        guard.insert(String::from("Cache Entry Value"));
+                        std::mem::drop(guard);
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        let mut guard = locking.lock(&pool, 4).await;
+                        guard.insert(String::from("Cache Entry Value"));
+                        std::mem::drop(guard);
+
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("Cache Entry Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod nonexisting_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4).await;
-                    let new_entry = guard.try_insert(String::from("Cache Entry Value"));
-                    assert_eq!(String::from("Cache Entry Value"), *new_entry.unwrap());
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            None,
+                        );
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            None,
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
             }
 
-            mod try_insert_nonexisting_entry_and_modify_it_through_the_returned_reference {
+            mod value_mut {
                 use super::*;
 
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod existing_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4);
-                    let new_entry = guard.try_insert(String::from("Cache Entry Value"));
-                    *new_entry.unwrap() = String::from("New Value");
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 4);
+                        guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        *locking.lock(&pool, 4).value_mut().unwrap() = String::from("New Cache Entry Value");
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).value(),
+                            Some(&String::from("New Cache Entry Value"))
+                        );
+                    }
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("New Value"))
-                    );
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        let mut guard = locking.lock(&pool, 4).await;
+                        guard.insert(String::from("Cache Entry Value"));
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        std::mem::drop(guard);
+                        *locking.lock(&pool, 4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
+                        assert_eq!(1, pool.borrow().num_entries_or_locked());
+                        assert_eq!(
+                            locking.lock(&pool, 4).await.value(),
+                            Some(&String::from("New Cache Entry Value"))
+                        );
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                mod nonexisting_entry {
+                    use super::*;
 
-                    let mut guard = locking.lock(&pool, 4).await;
-                    let new_entry = guard.try_insert(String::from("Cache Entry Value"));
-                    *new_entry.unwrap() = String::from("New Value");
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(None, locking.lock(&pool, 4).value_mut());
+                    }
 
-                    std::mem::drop(guard);
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("New Value"))
-                    );
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        assert_eq!(0, pool.borrow().num_entries_or_locked());
+                        assert_eq!(None, locking.lock(&pool, 4).await.value_mut());
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod remove_existing_entry {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4)
-                        .insert(String::from("Cache Entry Value"));
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 4);
-                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).value(), None);
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4)
-                        .await
-                        .insert(String::from("Cache Entry Value"));
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 4).await;
-                    assert_eq!(Some("Cache Entry Value".into()), guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).await.value(), None);
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod remove_nonexisting_entry_in_nonempty_map {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4)
-                        .insert(String::from("Cache Entry Value"));
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 5);
-                    assert_eq!(None, guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).value(), Some(&String::from("Cache Entry Value")));
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    locking.lock(&pool, 4)
-                        .await
-                        .insert(String::from("Cache Entry Value"));
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 5).await;
-                    assert_eq!(None, guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).await.value(), Some(&String::from("Cache Entry Value")));
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod remove_nonexisting_entry_in_empty_map {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-
-                    let mut guard = locking.lock(&pool, 5);
-                    assert_eq!(None, guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).value(), None);
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-
-                    let mut guard = locking.lock(&pool, 5).await;
-                    assert_eq!(None, guard.remove());
-                    std::mem::drop(guard);
-
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(locking.lock(&pool, 4).await.value(), None);
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod value_of_existing_entry {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    let mut guard = locking.lock(&pool, 4);
-                    guard.insert(String::from("Cache Entry Value"));
-                    std::mem::drop(guard);
-
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    let mut guard = locking.lock(&pool, 4).await;
-                    guard.insert(String::from("Cache Entry Value"));
-                    std::mem::drop(guard);
-
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("Cache Entry Value"))
-                    );
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod value_of_nonexisting_entry {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        None,
-                    );
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        None,
-                    );
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod value_mut_of_existing_entry {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 4);
-                    guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    *locking.lock(&pool, 4).value_mut().unwrap() = String::from("New Cache Entry Value");
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).value(),
-                        Some(&String::from("New Cache Entry Value"))
-                    );
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    let mut guard = locking.lock(&pool, 4).await;
-                    guard.insert(String::from("Cache Entry Value"));
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    std::mem::drop(guard);
-                    *locking.lock(&pool, 4).await.value_mut().unwrap() = String::from("New Cache Entry Value");
-                    assert_eq!(1, pool.borrow().num_entries_or_locked());
-                    assert_eq!(
-                        locking.lock(&pool, 4).await.value(),
-                        Some(&String::from("New Cache Entry Value"))
-                    );
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-            }
-
-            mod value_mut_of_nonexisting_entry {
-                use super::*;
-
-                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>>,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(None, locking.lock(&pool, 4).value_mut());
-                }
-
-                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-                where
-                    S: Borrow<$lockable_type<isize, String>> + Sync,
-                {
-                    let pool = locking.new();
-                    assert_eq!(0, pool.borrow().num_entries_or_locked());
-                    assert_eq!(None, locking.lock(&pool, 4).await.value_mut());
-                }
-
-                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
             }
 
             mod key {
