@@ -1428,6 +1428,60 @@ macro_rules! instantiate_lockable_tests {
 
                 $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
             }
+
+            mod multiple_operations_on_same_guard {
+                use super::*;
+
+                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>>,
+                {
+                    let pool = locking.new();
+                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                    let mut guard = locking.lock(&pool, 4);
+                    assert_eq!(None, guard.value());
+
+                    assert_eq!(None, guard.insert(String::from("Cache Entry Value")));
+                    assert_eq!(&String::from("Cache Entry Value"), guard.value().unwrap());
+
+                    *guard.value_mut().unwrap() = String::from("Another value");
+                    assert_eq!(&String::from("Another value"), guard.value().unwrap());
+
+                    assert_eq!(Some(String::from("Another value")), guard.remove());
+                    assert_eq!(None, guard.value());
+
+                    assert_eq!(None, guard.insert(String::from("Last Value")));
+
+                    std::mem::drop(guard);
+                    assert_eq!(String::from("Last Value"), *locking.lock(&pool, 4).value().unwrap());
+                }
+
+                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Sync,
+                {
+                    let pool = locking.new();
+                    assert_eq!(0, pool.borrow().num_entries_or_locked());
+                    let mut guard = locking.lock(&pool, 4).await;
+                    assert_eq!(None, guard.value());
+
+                    assert_eq!(None, guard.insert(String::from("Cache Entry Value")));
+                    assert_eq!(&String::from("Cache Entry Value"), guard.value().unwrap());
+
+                    *guard.value_mut().unwrap() = String::from("Another value");
+                    assert_eq!(&String::from("Another value"), guard.value().unwrap());
+
+                    assert_eq!(Some(String::from("Another value")), guard.remove());
+                    assert_eq!(None, guard.value());
+
+                    assert_eq!(None, guard.insert(String::from("Last Value")));
+
+                    std::mem::drop(guard);
+                    assert_eq!(String::from("Last Value"), *locking.lock(&pool, 4).await.value().unwrap());
+                }
+
+                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+            }
         }
 
         mod keys_with_entries_or_locked {
