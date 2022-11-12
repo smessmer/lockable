@@ -628,7 +628,6 @@ where
     }
 
     /// Consumes the cache and returns an iterator over all of its entries.
-    /// TODO Test
     #[inline]
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
         self.map_impl

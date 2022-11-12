@@ -8,6 +8,14 @@ use crate::guard::TryInsertError;
 use crate::lockable_map_impl::LockableMapImpl;
 use crate::map_like::ArcMutexMapLike;
 use std::borrow::{Borrow, BorrowMut};
+use std::fmt::Debug;
+
+/// Asserts that both vectors have the same entries but they may have a different order
+pub(crate) fn assert_vec_eq_unordered<T: Ord + Eq + Debug>(mut lhs: Vec<T>, mut rhs: Vec<T>) {
+    lhs.sort();
+    rhs.sort();
+    assert_eq!(lhs, rhs);
+}
 
 pub(crate) trait Guard<K, V> {
     fn key(&self) -> &K;
@@ -107,7 +115,7 @@ macro_rules! instantiate_lockable_tests {
         /// (i.e. blocking_lock, blocking_lock_owned, try_lock, try_lock_owned)
         trait SyncLocking<S, K, V> : Clone + Send
         where
-            S: Borrow<$lockable_type::<K, V>>,
+            S: Borrow<$lockable_type<K, V>>,
             K: Eq + PartialEq + Hash + Clone,
         {
             type Guard<'a> : $crate::tests::Guard<K, V> where S: 'a;
@@ -117,6 +125,7 @@ macro_rules! instantiate_lockable_tests {
             fn lock_waiting_is_ok<'a>(&self, map: &'a S, key: K) -> Self::Guard<'a> {
                 self.lock(map, key)
             }
+            fn extract(&self, s: S) -> $lockable_type<K, V>;
         }
         #[derive(Clone, Copy)]
         struct BlockingLock;
@@ -132,13 +141,16 @@ macro_rules! instantiate_lockable_tests {
             fn lock<'a>(&self, map: &'a $lockable_type::<K, V>, key: K) -> Self::Guard<'a> {
                 map.blocking_lock(key, SyncLimit::no_limit()).infallible_unwrap()
             }
+            fn extract(&self, s: $lockable_type<K, V>) -> $lockable_type<K, V> {
+                s
+            }
         }
         #[derive(Clone, Copy)]
         struct BlockingLockOwned;
         impl <K, V> SyncLocking<Arc<$lockable_type::<K, V>>, K, V> for BlockingLockOwned
         where
-            K: Eq + PartialEq + Hash + Clone + 'static,
-            V: 'static,
+            K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+            V: Debug + 'static,
         {
             type Guard<'a> = <$lockable_type::<K, V> as Lockable<K, V>>::OwnedGuard;
 
@@ -147,6 +159,9 @@ macro_rules! instantiate_lockable_tests {
             }
             fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
                 map.blocking_lock_owned(key, SyncLimit::no_limit()).infallible_unwrap()
+            }
+            fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
+                Arc::try_unwrap(s).unwrap()
             }
         }
         #[derive(Clone, Copy)]
@@ -174,13 +189,16 @@ macro_rules! instantiate_lockable_tests {
                     }
                 }
             }
+            fn extract(&self, s: $lockable_type<K, V>) -> $lockable_type<K, V> {
+                s
+            }
         }
         #[derive(Clone, Copy)]
         struct TryLockOwned;
         impl <K, V> SyncLocking<Arc<$lockable_type::<K, V>>, K, V> for TryLockOwned
         where
-            K: Eq + PartialEq + Hash + Clone + 'static,
-            V: 'static,
+            K: Eq + PartialEq + Hash + Clone + Debug + 'static,
+            V: Debug + 'static,
         {
             type Guard<'a> = <$lockable_type::<K, V> as Lockable<K, V>>::OwnedGuard;
 
@@ -198,6 +216,9 @@ macro_rules! instantiate_lockable_tests {
                     }
                 }
             }
+            fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
+                Arc::try_unwrap(s).unwrap()
+            }
         }
         /// A trait that allows our test cases to abstract over different async locking methods
         /// (i.e. async_lock, async_lock_owned, try_lock_async, try_lock_owned_async)
@@ -214,6 +235,7 @@ macro_rules! instantiate_lockable_tests {
             async fn lock_waiting_is_ok<'a>(&self, map: &'a S, key: K) -> Self::Guard<'a> {
                 self.lock(map, key).await
             }
+            fn extract(&self, s: S) -> $lockable_type<K, V>;
         }
         #[derive(Clone, Copy)]
         struct TryLockAsync;
@@ -242,14 +264,17 @@ macro_rules! instantiate_lockable_tests {
                     }
                 }
             }
+            fn extract(&self, s: $lockable_type<K, V>) -> $lockable_type<K, V> {
+                s
+            }
         }
         #[derive(Clone, Copy)]
         struct TryLockOwnedAsync;
         #[async_trait]
         impl <K, V> AsyncLocking<Arc<$lockable_type::<K, V>>, K, V> for TryLockOwnedAsync
         where
-            K: Eq + PartialEq + Hash + Clone + Send + Sync + 'static,
-            V: Send + Sync + 'static,
+            K: Eq + PartialEq + Hash + Clone + Send + Sync + Debug + 'static,
+            V: Send + Sync + Debug + 'static,
         {
             type Guard<'a> = <$lockable_type::<K, V> as Lockable<K, V>>::OwnedGuard;
 
@@ -266,6 +291,9 @@ macro_rules! instantiate_lockable_tests {
                         panic!("Timeout trying to get lock in TryLockAsync::lock_waiting_is_ok");
                     }
                 }
+            }
+            fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
+                Arc::try_unwrap(s).unwrap()
             }
         }
         #[derive(Clone, Copy)]
@@ -284,14 +312,17 @@ macro_rules! instantiate_lockable_tests {
             async fn lock<'a>(&self, map: &'a $lockable_type::<K, V>, key: K) -> Self::Guard<'a> {
                 map.async_lock(key, AsyncLimit::no_limit()).await.infallible_unwrap()
             }
+            fn extract(&self, s: $lockable_type<K, V>) -> $lockable_type<K, V> {
+                s
+            }
         }
         #[derive(Clone, Copy)]
         struct AsyncLockOwned;
         #[async_trait]
         impl <K, V> AsyncLocking<Arc<$lockable_type::<K, V>>, K, V> for AsyncLockOwned
         where
-            K: Eq + PartialEq + Hash + Clone + Send + Sync + 'static,
-            V: Send + Sync + 'static,
+            K: Eq + PartialEq + Hash + Clone + Send + Sync + Debug + 'static,
+            V: Send + Sync + Debug + 'static,
         {
             type Guard<'a> = <$lockable_type::<K, V> as Lockable<K, V>>::OwnedGuard;
 
@@ -300,6 +331,9 @@ macro_rules! instantiate_lockable_tests {
             }
             async fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
                 map.async_lock_owned(key, AsyncLimit::no_limit()).await.infallible_unwrap()
+            }
+            fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
+                Arc::try_unwrap(s).unwrap()
             }
         }
 
@@ -1560,6 +1594,98 @@ macro_rules! instantiate_lockable_tests {
             }
 
             $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+        }
+
+        mod into_entries_unordered {
+            use super::*;
+
+            mod map_with_0_entries {
+                use super::*;
+
+                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>>,
+                {
+                    let pool = locking.new();
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    assert_eq!(Vec::<(isize, String)>::new(), iter);
+                }
+
+                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Sync,
+                {
+                    let pool = locking.new();
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    assert_eq!(Vec::<(isize, String)>::new(), iter);
+                }
+
+                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+            }
+
+            mod map_with_1_entry {
+                use super::*;
+
+                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>>,
+                {
+                    let pool = locking.new();
+                    locking.lock(&pool, 4).insert(String::from("Value"));
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    $crate::tests::assert_vec_eq_unordered(vec![(4, String::from("Value"))], iter);
+                }
+
+                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Sync,
+                {
+                    let pool = locking.new();
+                    locking.lock(&pool, 4).await.insert(String::from("Value"));
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    $crate::tests::assert_vec_eq_unordered(vec![(4, String::from("Value"))], iter);
+                }
+
+                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+            }
+
+            mod map_with_multiple_entries {
+                use super::*;
+
+                fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>>,
+                {
+                    let pool = locking.new();
+                    locking.lock(&pool, 4).insert(String::from("Value 4"));
+                    locking.lock(&pool, 5).insert(String::from("Value 5"));
+                    locking.lock(&pool, 3).insert(String::from("Value 3"));
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    $crate::tests::assert_vec_eq_unordered(vec![
+                        (3, String::from("Value 3")),
+                        (4, String::from("Value 4")),
+                        (5, String::from("Value 5")),
+                    ], iter);
+                }
+
+                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Sync,
+                {
+                    let pool = locking.new();
+                    locking.lock(&pool, 4).await.insert(String::from("Value 4"));
+                    locking.lock(&pool, 5).await.insert(String::from("Value 5"));
+                    locking.lock(&pool, 3).await.insert(String::from("Value 3"));
+                    let iter = locking.extract(pool).into_entries_unordered().collect::<Vec<(isize, String)>>();
+                    $crate::tests::assert_vec_eq_unordered(vec![
+                        (3, String::from("Value 3")),
+                        (4, String::from("Value 4")),
+                        (5, String::from("Value 5")),
+                    ], iter);
+                }
+
+                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+            }
         }
 
         mod multi {
