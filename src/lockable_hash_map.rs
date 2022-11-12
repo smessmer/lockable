@@ -1,4 +1,5 @@
 use anyhow::Result;
+use futures::stream::Stream;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -559,6 +560,41 @@ where
     #[inline]
     pub fn keys_with_entries_or_locked(&self) -> Vec<K> {
         self.map_impl.keys_with_entries_or_locked()
+    }
+
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// The returned stream is `async` and therefore may return items much later than
+    /// when this function was called, but it only returns the entries that existed at
+    /// the time this function was called. Any items that were added since the call to
+    /// this function will not be returned by the stream, and any items that were
+    /// deleted since the function call will still be returned by the stream.
+    pub async fn lock_all_entries(
+        &self,
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
+        LockableMapImpl::lock_all(&self.map_impl).await
+    }
+
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// This is identical to [LockableHashMap::lock_all_entries], but but it works on
+    /// an `Arc<LockableHashMap>` instead of a [LockableHashMap] and returns a
+    /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that
+    /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// The returned stream is `async` and therefore may return items much later than
+    /// when this function was called, but it only returns the entries that existed at
+    /// the time this function was called. Any items that were added since the call to
+    /// this function will not be returned by the stream, and any items that were
+    /// deleted since the function call will still be returned by the stream.
+    pub async fn lock_all_entries_owned(
+        self: &Arc<Self>,
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
+        LockableMapImpl::lock_all(Arc::clone(self)).await
     }
 }
 

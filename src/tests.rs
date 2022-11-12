@@ -109,6 +109,7 @@ macro_rules! instantiate_lockable_tests {
         use std::sync::{Arc, Mutex};
         use std::thread::{self, JoinHandle};
         use std::time::Duration;
+        use futures::stream::StreamExt;
         use crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard};
 
         /// A trait that allows our test cases to abstract over different sync locking methods
@@ -1686,6 +1687,144 @@ macro_rules! instantiate_lockable_tests {
 
                 $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
             }
+        }
+
+        mod lock_all_entries {
+            use super::*;
+
+            mod when_all_are_unlocked {
+                use super::*;
+
+                mod map_with_0_entries {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        let guards: Vec<(isize, Option<String>)> =
+                            futures::executor::block_on(
+                                futures::executor::block_on(pool.borrow().lock_all_entries())
+                                    .map(|guard| (*guard.key(), guard.value().cloned()))
+                                    .collect()
+                            );
+                        crate::tests::assert_vec_eq_unordered(Vec::<(isize, Option<String>)>::new(), guards);
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        let guards: Vec<(isize, Option<String>)> =
+                            pool.borrow().lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .collect()
+                                .await;
+                        crate::tests::assert_vec_eq_unordered(Vec::<(isize, Option<String>)>::new(), guards);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+
+                mod map_with_1_entry {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).insert(String::from("Value"));
+
+                        let guards: Vec<(isize, Option<String>)> =
+                            futures::executor::block_on(
+                                futures::executor::block_on(pool.borrow().lock_all_entries())
+                                    .map(|guard| (*guard.key(), guard.value().cloned()))
+                                    .collect()
+                            );
+                        crate::tests::assert_vec_eq_unordered(vec![(4, Some(String::from("Value")))], guards);
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).await.insert(String::from("Value"));
+
+                        let guards: Vec<(isize, Option<String>)> =
+                            futures::executor::block_on(
+                                futures::executor::block_on(pool.borrow().lock_all_entries())
+                                    .map(|guard| (*guard.key(), guard.value().cloned()))
+                                    .collect()
+                            );
+                        crate::tests::assert_vec_eq_unordered(vec![(4, Some(String::from("Value")))], guards);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+
+                mod map_with_multiple_entries {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>>,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).insert(String::from("Value 5"));
+                        locking.lock(&pool, 3).insert(String::from("Value 3"));
+
+                        let guards: Vec<(isize, Option<String>)> =
+                            futures::executor::block_on(
+                                futures::executor::block_on(pool.borrow().lock_all_entries())
+                                    .map(|guard| (*guard.key(), guard.value().cloned()))
+                                    .collect()
+                            );
+                        crate::tests::assert_vec_eq_unordered(vec![
+                            (3, Some(String::from("Value 3"))),
+                            (4, Some(String::from("Value 4"))),
+                            (5, Some(String::from("Value 5"))),
+                        ], guards);
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Sync,
+                    {
+                        let pool = locking.new();
+                        locking.lock(&pool, 4).await.insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).await.insert(String::from("Value 5"));
+                        locking.lock(&pool, 3).await.insert(String::from("Value 3"));
+
+                        let guards: Vec<(isize, Option<String>)> =
+                        futures::executor::block_on(
+                            futures::executor::block_on(pool.borrow().lock_all_entries())
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .collect()
+                        );
+                        crate::tests::assert_vec_eq_unordered(vec![
+                            (3, Some(String::from("Value 3"))),
+                            (4, Some(String::from("Value 4"))),
+                            (5, Some(String::from("Value 5"))),
+                        ], guards);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+            }
+            // TODO Test that currently locked entries will be produced in the stream and will lock the stream until they become unlocked
+            // TODO Test that currently locked entries will be produced in the stream
+            //     - if they were pre-existing before they are locked
+            //     - if they are created while locked
+            //     - but not if they are not pre-existing and not created
+            //     - and also not if they are pre-existing but deleted while locked
+            // TODO Test that lock_all_entries doesn't lock the whole map while the stream hasn't gotten all locks yet and still allows locking/unlocking locks.
+            // TODO Duplicate the lock_all_entries test cases for lock_all_entries_owned (or use some macro to do it)
         }
 
         mod multi {

@@ -674,11 +674,6 @@ where
     /// the time this function was called. Any items that were added since the call to
     /// this function will not be returned by the stream, and any items that were
     /// deleted since the function call will still be returned by the stream.
-    ///
-    /// TODO Test that this doesn't lock the whole map while the stream hasn't gotten
-    /// all locks yet and still allows locking/unlocking locks.
-    ///
-    /// TODO Test
     pub async fn lock_all_entries(
         &self,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
@@ -699,11 +694,6 @@ where
     /// the time this function was called. Any items that were added since the call to
     /// this function will not be returned by the stream, and any items that were
     /// deleted since the function call will still be returned by the stream.
-    ///
-    /// TODO Test that this doesn't lock the whole map while the stream hasn't gotten
-    /// all locks yet and still allows locking/unlocking locks.
-    ///
-    /// TODO Test
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
