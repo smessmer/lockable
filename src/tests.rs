@@ -2383,7 +2383,7 @@ macro_rules! instantiate_lockable_tests {
                 }
             }
 
-            mod locked_entry_types {
+            mod locked_entry_existence {
                 use super::*;
 
                 mod given_preexisting_when_not_deleted_while_locked_then_is_returned {
@@ -2610,7 +2610,79 @@ macro_rules! instantiate_lockable_tests {
                     $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
             }
-            // TODO Test that lock_all_entries doesn't lock the whole map while the stream hasn't gotten all locks yet and still allows locking/unlocking locks.
+
+            mod running_stream_doesnt_block_whole_map {
+                // Test that lock_all_entries doesn't lock the whole map while the stream hasn't gotten all locks yet and still allows locking/unlocking locks.
+
+                use super::*;
+
+                fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                {
+                    let pool = Arc::new(locking.new());
+                    locking.lock(&pool, 4).insert(String::from("Value 4"));
+
+                    let child = LockingThread::launch_thread_sync_lock(&locking, &pool, 4);
+
+                    child.wait_for_lock();
+
+                    let mut guards_stream =
+                        futures::executor::block_on(pool.deref().borrow().lock_all_entries())
+                            .map(|guard| (*guard.key(), guard.value().cloned()));
+
+                    // Check that even if we wait, we don't get the value
+                    thread::sleep(Duration::from_millis(1000));
+                    assert_eq!(None, guards_stream.next_if_ready());
+
+                    // Check that we can lock other entries while the stream is running
+                    let other_guard_1 = locking.lock(&pool, 5);
+                    let _other_guard_2 = locking.lock(&pool, 6);
+                    std::mem::drop(other_guard_1);
+
+                    // Release the lock thread and check we can get that lock while the outer lock is still locked
+                    child.release_and_wait();
+                    assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+
+                    // Assert there are no other entries
+                    assert_eq!(None, futures::executor::block_on(guards_stream.next()));
+                }
+
+                async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+                where
+                    S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                {
+                    let pool = Arc::new(locking.new());
+                    locking.lock(&pool, 4).await.insert(String::from("Value 4"));
+
+                    let child = LockingThread::launch_thread_async_lock(&locking, &pool, 4).await;
+
+                    child.wait_for_lock();
+
+                    let mut guards_stream =
+                        pool.deref().borrow().lock_all_entries()
+                            .await
+                            .map(|guard| (*guard.key(), guard.value().cloned()));
+
+                    // Check that even if we wait, we don't get the value
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    assert_eq!(None, guards_stream.next_if_ready());
+
+                    // Check that we can lock and unlock other entries while the stream is running
+                    let other_guard_1 = locking.lock(&pool, 5).await;
+                    let _other_guard_2 = locking.lock(&pool, 6).await;
+                    std::mem::drop(other_guard_1);
+
+                    // Release the lock thread and check we can get that lock while the outer lock is still locked
+                    child.release_and_wait();
+                    assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+
+                    // Assert there are no other entries
+                    assert_eq!(None, guards_stream.next().await);
+                }
+
+                $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+            }
             // TODO Duplicate the lock_all_entries test cases for lock_all_entries_owned (or use some macro to do it)
         }
 
