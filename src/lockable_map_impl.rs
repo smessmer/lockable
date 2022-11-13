@@ -338,7 +338,6 @@ where
             .into_iter()
     }
 
-    // TODO Test
     pub async fn lock_all<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Stream<Item = Guard<M, V, H, S>> {
