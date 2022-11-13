@@ -1830,11 +1830,12 @@ macro_rules! instantiate_lockable_tests {
                         locking.lock(&pool, 4).await.insert(String::from("Value"));
 
                         let guards: Vec<(isize, Option<String>)> =
-                            futures::executor::block_on(
-                                futures::executor::block_on(pool.borrow().lock_all_entries())
-                                    .map(|guard| (*guard.key(), guard.value().cloned()))
-                                    .collect()
-                            );
+                            pool.borrow()
+                                .lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .collect()
+                                .await;
                         crate::tests::assert_vec_eq_unordered(vec![(4, Some(String::from("Value")))], guards);
                     }
 
@@ -1876,11 +1877,11 @@ macro_rules! instantiate_lockable_tests {
                         locking.lock(&pool, 3).await.insert(String::from("Value 3"));
 
                         let guards: Vec<(isize, Option<String>)> =
-                            futures::executor::block_on(
-                                futures::executor::block_on(pool.borrow().lock_all_entries())
-                                    .map(|guard| (*guard.key(), guard.value().cloned()))
-                                    .collect()
-                            );
+                            pool.borrow().lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .collect()
+                                .await;
                         crate::tests::assert_vec_eq_unordered(vec![
                             (3, Some(String::from("Value 3"))),
                             (4, Some(String::from("Value 4"))),
@@ -1910,8 +1911,7 @@ macro_rules! instantiate_lockable_tests {
 
                         let mut guards_stream =
                             futures::executor::block_on(pool.deref().borrow().lock_all_entries())
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream doesn't produce any value while the entry is locked
                         thread::sleep(Duration::from_millis(1000));
@@ -1940,8 +1940,7 @@ macro_rules! instantiate_lockable_tests {
                         let mut guards_stream =
                             pool.deref().borrow().lock_all_entries()
                                 .await
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream doesn't produce any value while the entry is locked
                         thread::sleep(Duration::from_millis(1000));
@@ -1979,8 +1978,7 @@ macro_rules! instantiate_lockable_tests {
 
                         let mut guards_stream =
                             futures::executor::block_on(pool.deref().borrow().lock_all_entries())
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream doesn't produce any value while the entry is locked
                         thread::sleep(Duration::from_millis(1000));
@@ -2017,8 +2015,7 @@ macro_rules! instantiate_lockable_tests {
                         let mut guards_stream =
                             pool.deref().borrow().lock_all_entries()
                                 .await
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream doesn't produce any value while the entry is locked
                         thread::sleep(Duration::from_millis(1000));
@@ -2062,8 +2059,7 @@ macro_rules! instantiate_lockable_tests {
 
                         let mut guards_stream =
                             futures::executor::block_on(pool.deref().borrow().lock_all_entries())
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream produces the unlocked values while some other entries are locked
                         let values = vec![
@@ -2113,9 +2109,9 @@ macro_rules! instantiate_lockable_tests {
                         child2.wait_for_lock();
 
                         let mut guards_stream =
-                            futures::executor::block_on(pool.deref().borrow().lock_all_entries())
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .peekable();
+                            pool.deref().borrow().lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()));
 
                         // Check that the stream produces the unlocked values while some other entries are locked
                         let values = vec![
