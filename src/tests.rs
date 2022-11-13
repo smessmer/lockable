@@ -105,12 +105,13 @@ macro_rules! instantiate_lockable_tests {
     };
     ($lockable_type: ident) => {
         use async_trait::async_trait;
+        use std::ops::Deref;
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::{Arc, Mutex};
         use std::thread::{self, JoinHandle};
         use std::time::Duration;
-        use futures::stream::StreamExt;
-        use crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard};
+        use futures::{stream::StreamExt};
+        use $crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard, utils::MyStreamExt};
 
         /// A trait that allows our test cases to abstract over different sync locking methods
         /// (i.e. blocking_lock, blocking_lock_owned, try_lock, try_lock_owned)
@@ -1817,7 +1818,188 @@ macro_rules! instantiate_lockable_tests {
                     $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
             }
-            // TODO Test that currently locked entries will be produced in the stream and will lock the stream until they become unlocked
+
+            mod when_some_are_locked {
+                use super::*;
+
+                mod map_with_1_entry {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 4).insert(String::from("Value"));
+
+                        let counter = Arc::new(AtomicU32::new(0));
+                        let barrier = Arc::new(Mutex::new(()));
+                        let barrier_guard = barrier.lock().unwrap();
+
+                        let _child = launch_thread_sync_lock(&locking, &pool, 4, &counter, Some(&barrier));
+                        // Wait for the child to lock the entry
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(1, counter.load(Ordering::SeqCst));
+
+                        let mut guards_stream =
+                            futures::executor::block_on(pool.deref().borrow().lock_all_entries())
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream doesn't produce any value while the entry is locked
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the entry
+                        drop(barrier_guard);
+                        thread::sleep(Duration::from_millis(100));
+
+                        // Check the stream now produces the entry
+                        assert_eq!(Some((4, Some(String::from("Value")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, futures::executor::block_on(guards_stream.next()));
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 4).await.insert(String::from("Value"));
+
+                        let counter = Arc::new(AtomicU32::new(0));
+                        let barrier = Arc::new(Mutex::new(()));
+                        let barrier_guard = barrier.lock().unwrap();
+
+                        let _child = launch_thread_async_lock(&locking, &pool, 4, &counter, Some(&barrier));
+                        // Wait for the child to lock the entry
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(1, counter.load(Ordering::SeqCst));
+
+                        let mut guards_stream =
+                            pool.deref().borrow().lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream doesn't produce any value while the entry is locked
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the entry
+                        drop(barrier_guard);
+                        thread::sleep(Duration::from_millis(100));
+
+                        // Check the stream now produces the entry
+                        assert_eq!(Some((4, Some(String::from("Value")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, guards_stream.next().await);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+
+                mod map_with_two_entries {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 4).insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).insert(String::from("Value 5"));
+
+                        let counter = Arc::new(AtomicU32::new(0));
+                        let barrier1 = Arc::new(Mutex::new(()));
+                        let barrier_guard1 = barrier1.lock().unwrap();
+                        let _child1 = launch_thread_sync_lock(&locking, &pool, 4, &counter, Some(&barrier1));
+
+                        let barrier2 = Arc::new(Mutex::new(()));
+                        let barrier_guard2 = barrier2.lock().unwrap();
+                        let _child2 = launch_thread_sync_lock(&locking, &pool, 5, &counter, Some(&barrier2));
+
+                        // Wait for the children to lock the entry
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(2, counter.load(Ordering::SeqCst));
+
+                        let mut guards_stream =
+                            futures::executor::block_on(pool.deref().borrow().lock_all_entries())
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream doesn't produce any value while the entry is locked
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock one entry
+                        drop(barrier_guard1);
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the other entry
+                        drop(barrier_guard2);
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, futures::executor::block_on(guards_stream.next()));
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 4).await.insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).await.insert(String::from("Value 5"));
+
+                        let counter = Arc::new(AtomicU32::new(0));
+                        let barrier1 = Arc::new(Mutex::new(()));
+                        let barrier_guard1 = barrier1.lock().unwrap();
+                        let _child1 = launch_thread_async_lock(&locking, &pool, 4, &counter, Some(&barrier1));
+
+                        let barrier2 = Arc::new(Mutex::new(()));
+                        let barrier_guard2 = barrier2.lock().unwrap();
+                        let _child2 = launch_thread_async_lock(&locking, &pool, 5, &counter, Some(&barrier2));
+
+                        // Wait for the children to lock the entry
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(2, counter.load(Ordering::SeqCst));
+
+                        let mut guards_stream =
+                            pool.deref().borrow().lock_all_entries()
+                                .await
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream doesn't produce any value while the entry is locked
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock one entry
+                        drop(barrier_guard1);
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the other entry
+                        drop(barrier_guard2);
+                        thread::sleep(Duration::from_millis(100));
+                        assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, guards_stream.next().await);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+            }
             // TODO Test that currently locked entries will be produced in the stream
             //     - if they were pre-existing before they are locked
             //     - if they are created while locked
