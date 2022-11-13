@@ -567,10 +567,14 @@ where
     /// produce them as they become unlocked and can be locked by the stream.
     ///
     /// The returned stream is `async` and therefore may return items much later than
-    /// when this function was called, but it only returns the entries that existed at
-    /// the time this function was called. Any items that were added since the call to
-    /// this function will not be returned by the stream, and any items that were
-    /// deleted since the function call will still be returned by the stream.
+    /// when this function was called, but it only returns an entry if it existed
+    /// or was locked at the time this function was called, and still exists when
+    /// the stream is returning the entry.
+    /// For any entry currently locked by another thread or task while this function
+    /// is called, the following rules apply:
+    /// - If that thread/task creates the entry => the stream will return it
+    /// - If that thread/task removes the entry => the stream will not return it
+    /// - If the entry was not pre-existing and that thread/task does not create it => the stream will not return it.
     pub async fn lock_all_entries(
         &self,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
@@ -585,12 +589,6 @@ where
     /// an `Arc<LockableHashMap>` instead of a [LockableHashMap] and returns a
     /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that
     /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
-    ///
-    /// The returned stream is `async` and therefore may return items much later than
-    /// when this function was called, but it only returns the entries that existed at
-    /// the time this function was called. Any items that were added since the call to
-    /// this function will not be returned by the stream, and any items that were
-    /// deleted since the function call will still be returned by the stream.
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {

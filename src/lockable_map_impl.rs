@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use futures::stream::{FuturesUnordered, Stream};
+use futures::stream::{FuturesUnordered, Stream, StreamExt};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::future::Future;
@@ -338,11 +338,17 @@ where
             .into_iter()
     }
 
+    /// Locks all entries in the cache and returns their guards as a stream.
+    /// For entries that are locked by other threads or tasks, the stream will wait until they are unlocked.
+    /// If that other thread or task having a lock for an entry
+    /// - creates the entry => the stream will return them
+    /// - removes the entry => the stream will not return them
+    /// - entries that were locked by another thread or task but don't have a value will not be returned
     pub async fn lock_all<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Stream<Item = Guard<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();
-        let cache_entries: FuturesUnordered<_> = cache_entries
+        cache_entries
             .iter()
             .map(|(key, mutex)| {
                 let this = this.clone();
@@ -350,11 +356,17 @@ where
                 let mutex = Arc::clone(mutex);
                 async move {
                     let guard = mutex.lock_owned().await;
-                    Self::_make_guard(this, key, guard)
+                    let guard = Self::_make_guard(this, key, guard);
+                    if guard.value().is_some() {
+                        Some(guard)
+                    } else {
+                        None
+                    }
                 }
             })
-            .collect();
-        cache_entries
+            .collect::<FuturesUnordered<_>>()
+            // Filter out entries that were removed or not-preexisting and not created while locked
+            .filter_map(|x| futures::future::ready(x))
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: OwnedMutexGuard<EntryValue<M::V>>) {
