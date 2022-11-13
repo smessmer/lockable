@@ -258,13 +258,7 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the thread until the mutex for this key is acquired.
 
-        // TODO Switch to tokio::sync::Mutex::blocking_lock_owned if it gets implemented, see https://github.com/tokio-rs/tokio/issues/5109
-        let guard = match tokio::runtime::Handle::try_current() {
-            Ok(runtime) => runtime.block_on(mutex.lock_owned()),
-            Err(_) => tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(mutex.lock_owned()),
-        };
+        let guard = mutex.blocking_lock_owned();
 
         Ok(Self::_make_guard(this, key, guard))
     }

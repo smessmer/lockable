@@ -22,10 +22,11 @@ futures = "^0.3.25"
 log = "^0.4.17"
 lru = {version = "^0.8.1", optional = true}
 thiserror = "^1.0.37"
-# TODO If we remove the hack to create a runtime in blocking_lock, then we don't need the `rt-multi-thread` feature anymore, `rt` should be enough.
-tokio = {version = "^1.21.2", features = ["sync", "time", "rt-multi-thread"]}
+# TODO tokio master branch needed for Mutex::blocking_lock_owned. Once any version after v1.21.2 is released, we can probably switch to that new version instead.
+tokio = {git = "https://github.com/tokio-rs/tokio", rev = "01f019397182097c955bae5358034bb9763ba964", features = ["sync", "time"]}
 derive_more = "^0.99.17"
 
 [dev-dependencies]
-tokio = {version = "^1.21.2", features = ["sync", "time", "macros", "rt-multi-thread"]}
+# TODO tokio master branch needed for Mutex::blocking_lock_owned. Once any version after v1.21.2 is released, we can probably switch to that new version instead.
+tokio = {git = "https://github.com/tokio-rs/tokio", rev = "01f019397182097c955bae5358034bb9763ba964", features = ["sync", "time", "macros", "rt-multi-thread"]}
 async-trait = "^0.1.58"

@@ -9,12 +9,33 @@ use crate::lockable_map_impl::LockableMapImpl;
 use crate::map_like::ArcMutexMapLike;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
+use std::time::{Duration, Instant};
 
 /// Asserts that both vectors have the same entries but they may have a different order
 pub(crate) fn assert_vec_eq_unordered<T: Ord + Eq + Debug>(mut lhs: Vec<T>, mut rhs: Vec<T>) {
     lhs.sort();
     rhs.sort();
     assert_eq!(lhs, rhs);
+}
+
+pub(crate) fn wait_for(mut func: impl FnMut() -> bool, timeout: Duration) {
+    let start = Instant::now();
+    while !func() {
+        if start.elapsed() > timeout {
+            panic!("Timeout waiting for condition");
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+pub(crate) async fn wait_for_async(mut func: impl FnMut() -> bool, timeout: Duration) {
+    let start = Instant::now();
+    while !func() {
+        if start.elapsed() > timeout {
+            panic!("Timeout waiting for condition");
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
 }
 
 pub(crate) trait Guard<K, V> {
@@ -106,10 +127,10 @@ macro_rules! instantiate_lockable_tests {
     ($lockable_type: ident) => {
         use async_trait::async_trait;
         use std::ops::Deref;
-        use std::sync::atomic::{AtomicU32, Ordering};
-        use std::sync::{Arc, Mutex};
+        use std::sync::Arc;
+        use tokio::sync::{Mutex, OwnedMutexGuard};
         use std::thread::{self, JoinHandle};
-        use std::time::Duration;
+        use std::time::{Duration, Instant};
         use futures::{stream::StreamExt};
         use $crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard, utils::MyStreamExt};
 
@@ -181,12 +202,12 @@ macro_rules! instantiate_lockable_tests {
                 map.try_lock(key, SyncLimit::no_limit()).infallible_unwrap().expect("Entry already locked")
             }
             fn lock_waiting_is_ok<'a>(&self, map: &'a $lockable_type<K, V>, key: K) -> Self::Guard<'a> {
-                let start = std::time::Instant::now();
+                let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock(key.clone(), SyncLimit::no_limit()).infallible_unwrap() {
                         break guard;
                     }
-                    if std::time::Instant::now() - start > Duration::from_secs(10) {
+                    if Instant::now() - start > Duration::from_secs(10) {
                         panic!("Timeout trying to get lock in TryLock::lock_waiting_is_ok");
                     }
                 }
@@ -208,12 +229,12 @@ macro_rules! instantiate_lockable_tests {
                 Arc::new($lockable_type::<K, V>::new())
             }
             fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
-                let start = std::time::Instant::now();
+                let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock_owned(key.clone(), SyncLimit::no_limit()).infallible_unwrap() {
                         break guard;
                     }
-                    if std::time::Instant::now() - start > Duration::from_secs(10) {
+                    if Instant::now() - start > Duration::from_secs(10) {
                         panic!("Timeout trying to get lock in TryLockOwned::lock_waiting_is_ok");
                     }
                 }
@@ -256,12 +277,12 @@ macro_rules! instantiate_lockable_tests {
                 map.try_lock_async(key, AsyncLimit::no_limit()).await.infallible_unwrap().expect("Entry already locked")
             }
             async fn lock_waiting_is_ok<'a>(&self, map: &'a $lockable_type::<K, V>, key: K) -> Self::Guard<'a> {
-                let start = std::time::Instant::now();
+                let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock_async(key.clone(), AsyncLimit::no_limit()).await.infallible_unwrap() {
                         break guard;
                     }
-                    if std::time::Instant::now() - start > Duration::from_secs(10) {
+                    if Instant::now() - start > Duration::from_secs(10) {
                         panic!("Timeout trying to get lock in TryLockAsync::lock_waiting_is_ok");
                     }
                 }
@@ -284,12 +305,12 @@ macro_rules! instantiate_lockable_tests {
                 Arc::new($lockable_type::<K, V>::new())
             }
             async fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
-                let start = std::time::Instant::now();
+                let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock_owned_async(key.clone(), AsyncLimit::no_limit()).await.infallible_unwrap() {
                         break guard;
                     }
-                    if std::time::Instant::now() - start > Duration::from_secs(10) {
+                    if Instant::now() - start > Duration::from_secs(10) {
                         panic!("Timeout trying to get lock in TryLockAsync::lock_waiting_is_ok");
                     }
                 }
@@ -339,62 +360,114 @@ macro_rules! instantiate_lockable_tests {
             }
         }
 
-        // Launch a thread that
-        // 1. locks the given key
-        // 2. once it has the lock, increments a counter
-        // 3. then waits until a barrier is released before it releases the lock
-        fn launch_thread_sync_lock<S, L>(
-            locking: &L,
-            pool: &Arc<S>,
-            key: isize,
-            counter: &Arc<AtomicU32>,
-            barrier: Option<&Arc<Mutex<()>>>,
-        ) -> JoinHandle<()>
-        where
-            S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            L: SyncLocking<S, isize, String> + Sync + 'static,
-        {
-            let locking = (*locking).clone();
-            let pool = Arc::clone(pool);
-            let counter = Arc::clone(counter);
-            let barrier = barrier.map(Arc::clone);
-            thread::spawn(move || {
-                let _guard = locking.lock_waiting_is_ok(&pool, key);
-                counter.fetch_add(1, Ordering::SeqCst);
-                if let Some(barrier) = barrier {
-                    let _barrier = barrier.lock().unwrap();
-                }
-            })
+        struct LockingThread {
+            join_handle: Option<JoinHandle<()>>,
+            // A mutex that is locked only while the LockingThread hasn't acquired a lock yet
+            acquire_barrier: Arc<Mutex<()>>,
+            // A mutex that can be released to signal the LockingThread to release its lock
+            release_barrier_guard: Option<OwnedMutexGuard<()>>,
         }
 
-        fn launch_thread_async_lock<S, L>(
-            locking: &L,
-            pool: &Arc<S>,
-            key: isize,
-            counter: &Arc<AtomicU32>,
-            barrier: Option<&Arc<Mutex<()>>>,
-        ) -> JoinHandle<()>
-        where
-            S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            L: AsyncLocking<S, isize, String> + Sync + 'static,
-        {
-            let locking = (*locking).clone();
-            let pool = Arc::clone(pool);
-            let counter = Arc::clone(counter);
-            let barrier = barrier.map(Arc::clone);
-            thread::spawn(move || {
-                let runtime = tokio::runtime::Runtime::new().unwrap();
-                let _guard = runtime.block_on(locking.lock_waiting_is_ok(&pool, key));
-                counter.fetch_add(1, Ordering::SeqCst);
-                if let Some(barrier) = barrier {
-                    let _barrier = barrier.lock().unwrap();
+        impl LockingThread {
+            // Launch a thread that
+            // 1. locks the given key
+            // 2. once it has the lock, increments a counter
+            // 3. then waits until a barrier is released before it releases the lock
+            pub fn launch_thread_sync_lock<S, L>(
+                locking: &L,
+                pool: &Arc<S>,
+                key: isize,
+            ) -> Self
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                L: SyncLocking<S, isize, String> + Sync + 'static,
+            {
+                let locking = (*locking).clone();
+                let pool = Arc::clone(pool);
+                let acquire_barrier = Arc::new(Mutex::new(()));
+                let acquire_barrier_guard = Arc::clone(&acquire_barrier).blocking_lock_owned();
+                let release_barrier = Arc::new(Mutex::new(()));
+                let release_barrier_guard = Some(Arc::clone(&release_barrier).blocking_lock_owned());
+                let join_handle = Some(thread::spawn(move || {
+                    let _guard = locking.lock_waiting_is_ok(&pool, key);
+                    drop(acquire_barrier_guard);
+                    let _release_barrier = release_barrier.blocking_lock();
+                }));
+                Self {
+                    join_handle,
+                    acquire_barrier,
+                    release_barrier_guard,
                 }
-            })
+            }
+
+            pub async fn launch_thread_async_lock<S, L>(
+                locking: &L,
+                pool: &Arc<S>,
+                key: isize,
+            ) -> Self
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                L: AsyncLocking<S, isize, String> + Sync + 'static,
+            {
+                let locking = (*locking).clone();
+                let pool = Arc::clone(pool);
+                let acquire_barrier = Arc::new(Mutex::new(()));
+                let acquire_barrier_guard = Arc::clone(&acquire_barrier).lock_owned().await;
+                let release_barrier = Arc::new(Mutex::new(()));
+                let release_barrier_guard = Some(Arc::clone(&release_barrier).lock_owned().await);
+                let join_handle = Some(thread::spawn(move || {
+                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                    let _guard = runtime.block_on(locking.lock_waiting_is_ok(&pool, key));
+                    drop(acquire_barrier_guard);
+                    let _release_barrier = release_barrier.blocking_lock();
+                }));
+                Self {
+                    join_handle,
+                    acquire_barrier,
+                    release_barrier_guard,
+                }
+            }
+
+            pub fn entered_lock_section(&self) -> bool {
+                self.acquire_barrier.try_lock().is_ok()
+            }
+
+            pub fn wait_for_lock(&self) {
+                $crate::tests::wait_for(|| self.entered_lock_section(), Duration::from_secs(1));
+            }
+
+            pub async fn wait_for_lock_async(&self) {
+                $crate::tests::wait_for_async(|| self.entered_lock_section(), Duration::from_secs(1)).await;
+            }
+
+            pub fn release(&mut self) {
+                if let Some(release_barrier_guard) = self.release_barrier_guard.take() {
+                    drop(release_barrier_guard);
+                }
+            }
+
+            pub fn release_and_wait(mut self) {
+                self.release();
+                self.join();
+            }
+
+            pub fn join(&mut self) {
+                if let Some(join_handle) = self.join_handle.take() {
+                    join_handle.join().unwrap();
+                }
+            }
+        }
+
+        impl Drop for LockingThread {
+            fn drop(&mut self) {
+                self.release();
+                self.join();
+            }
         }
 
         #[tokio::test]
         #[should_panic(
-            expected = "Cannot start a runtime from within a runtime. This happens because a function (like `block_on`) attempted to block the current thread while the thread is being used to drive asynchronous tasks."
+            expected = "Cannot block the current thread from within a runtime. This happens because a function attempted to block the current thread while the thread is being used to drive asynchronous tasks."
         )]
         async fn blocking_lock_from_async_context_with_sync_api() {
             let p = $lockable_type::<isize, String>::new();
@@ -403,7 +476,7 @@ macro_rules! instantiate_lockable_tests {
 
         #[tokio::test]
         #[should_panic(
-            expected = "Cannot start a runtime from within a runtime. This happens because a function (like `block_on`) attempted to block the current thread while the thread is being used to drive asynchronous tasks."
+            expected = "Cannot block the current thread from within a runtime. This happens because a function attempted to block the current thread while the thread is being used to drive asynchronous tasks."
         )]
         async fn blocking_lock_owned_from_async_context_with_sync_api() {
             let p = Arc::new($lockable_type::<isize, String>::new());
@@ -1832,14 +1905,8 @@ macro_rules! instantiate_lockable_tests {
                         let pool = Arc::new(locking.new());
                         locking.lock(&pool, 4).insert(String::from("Value"));
 
-                        let counter = Arc::new(AtomicU32::new(0));
-                        let barrier = Arc::new(Mutex::new(()));
-                        let barrier_guard = barrier.lock().unwrap();
-
-                        let _child = launch_thread_sync_lock(&locking, &pool, 4, &counter, Some(&barrier));
-                        // Wait for the child to lock the entry
-                        thread::sleep(Duration::from_millis(100));
-                        assert_eq!(1, counter.load(Ordering::SeqCst));
+                        let child = LockingThread::launch_thread_sync_lock(&locking, &pool, 4);
+                        child.wait_for_lock();
 
                         let mut guards_stream =
                             futures::executor::block_on(pool.deref().borrow().lock_all_entries())
@@ -1851,8 +1918,7 @@ macro_rules! instantiate_lockable_tests {
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the entry
-                        drop(barrier_guard);
-                        thread::sleep(Duration::from_millis(100));
+                        child.release_and_wait();
 
                         // Check the stream now produces the entry
                         assert_eq!(Some((4, Some(String::from("Value")))), guards_stream.next_if_ready());
@@ -1868,14 +1934,8 @@ macro_rules! instantiate_lockable_tests {
                         let pool = Arc::new(locking.new());
                         locking.lock(&pool, 4).await.insert(String::from("Value"));
 
-                        let counter = Arc::new(AtomicU32::new(0));
-                        let barrier = Arc::new(Mutex::new(()));
-                        let barrier_guard = barrier.lock().unwrap();
-
-                        let _child = launch_thread_async_lock(&locking, &pool, 4, &counter, Some(&barrier));
-                        // Wait for the child to lock the entry
-                        thread::sleep(Duration::from_millis(100));
-                        assert_eq!(1, counter.load(Ordering::SeqCst));
+                        let child = LockingThread::launch_thread_async_lock(&locking, &pool, 4).await;
+                        child.wait_for_lock_async().await;
 
                         let mut guards_stream =
                             pool.deref().borrow().lock_all_entries()
@@ -1888,8 +1948,7 @@ macro_rules! instantiate_lockable_tests {
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the entry
-                        drop(barrier_guard);
-                        thread::sleep(Duration::from_millis(100));
+                        child.release_and_wait();
 
                         // Check the stream now produces the entry
                         assert_eq!(Some((4, Some(String::from("Value")))), guards_stream.next_if_ready());
@@ -1912,18 +1971,11 @@ macro_rules! instantiate_lockable_tests {
                         locking.lock(&pool, 4).insert(String::from("Value 4"));
                         locking.lock(&pool, 5).insert(String::from("Value 5"));
 
-                        let counter = Arc::new(AtomicU32::new(0));
-                        let barrier1 = Arc::new(Mutex::new(()));
-                        let barrier_guard1 = barrier1.lock().unwrap();
-                        let _child1 = launch_thread_sync_lock(&locking, &pool, 4, &counter, Some(&barrier1));
+                        let child1 = LockingThread::launch_thread_sync_lock(&locking, &pool, 4);
+                        let child2 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
 
-                        let barrier2 = Arc::new(Mutex::new(()));
-                        let barrier_guard2 = barrier2.lock().unwrap();
-                        let _child2 = launch_thread_sync_lock(&locking, &pool, 5, &counter, Some(&barrier2));
-
-                        // Wait for the children to lock the entry
-                        thread::sleep(Duration::from_millis(100));
-                        assert_eq!(2, counter.load(Ordering::SeqCst));
+                        child1.wait_for_lock();
+                        child1.wait_for_lock();
 
                         let mut guards_stream =
                             futures::executor::block_on(pool.deref().borrow().lock_all_entries())
@@ -1935,15 +1987,13 @@ macro_rules! instantiate_lockable_tests {
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock one entry
-                        drop(barrier_guard1);
-                        thread::sleep(Duration::from_millis(100));
+                        child1.release_and_wait();
                         assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
                         thread::sleep(Duration::from_millis(100));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the other entry
-                        drop(barrier_guard2);
-                        thread::sleep(Duration::from_millis(100));
+                        child2.release_and_wait();
                         assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
 
                         // Assert there are no other entries
@@ -1958,18 +2008,11 @@ macro_rules! instantiate_lockable_tests {
                         locking.lock(&pool, 4).await.insert(String::from("Value 4"));
                         locking.lock(&pool, 5).await.insert(String::from("Value 5"));
 
-                        let counter = Arc::new(AtomicU32::new(0));
-                        let barrier1 = Arc::new(Mutex::new(()));
-                        let barrier_guard1 = barrier1.lock().unwrap();
-                        let _child1 = launch_thread_async_lock(&locking, &pool, 4, &counter, Some(&barrier1));
+                        let child1 = LockingThread::launch_thread_async_lock(&locking, &pool, 4).await;
+                        let child2 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
 
-                        let barrier2 = Arc::new(Mutex::new(()));
-                        let barrier_guard2 = barrier2.lock().unwrap();
-                        let _child2 = launch_thread_async_lock(&locking, &pool, 5, &counter, Some(&barrier2));
-
-                        // Wait for the children to lock the entry
-                        thread::sleep(Duration::from_millis(100));
-                        assert_eq!(2, counter.load(Ordering::SeqCst));
+                        child1.wait_for_lock_async().await;
+                        child1.wait_for_lock_async().await;
 
                         let mut guards_stream =
                             pool.deref().borrow().lock_all_entries()
@@ -1982,15 +2025,13 @@ macro_rules! instantiate_lockable_tests {
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock one entry
-                        drop(barrier_guard1);
-                        thread::sleep(Duration::from_millis(100));
+                        child1.release_and_wait();
                         assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
                         thread::sleep(Duration::from_millis(100));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the other entry
-                        drop(barrier_guard2);
-                        thread::sleep(Duration::from_millis(100));
+                        child2.release_and_wait();
                         assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
 
                         // Assert there are no other entries
@@ -2073,13 +2114,11 @@ macro_rules! instantiate_lockable_tests {
                 let pool = Arc::new(locking.new());
                 let guard = locking.lock(&*pool, 5);
 
-                let counter = Arc::new(AtomicU32::new(0));
-
-                let child = launch_thread_sync_lock(&locking, &pool, 5, &counter, None);
+                let child = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
 
                 // Check that even if we wait, the child thread won't get the lock
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(0, counter.load(Ordering::SeqCst));
+                std::thread::sleep(Duration::from_millis(1000));
+                assert!(!child.entered_lock_section());
 
                 // Check that we can still lock other locks while the child is waiting
                 {
@@ -2090,8 +2129,8 @@ macro_rules! instantiate_lockable_tests {
                 std::mem::drop(guard);
 
                 // And check that the child got it
-                child.join().unwrap();
-                assert_eq!(1, counter.load(Ordering::SeqCst));
+                child.wait_for_lock();
+                child.release_and_wait();
 
                 assert_eq!(0, (*pool).borrow().num_entries_or_locked());
             }
@@ -2103,13 +2142,11 @@ macro_rules! instantiate_lockable_tests {
                 let pool = Arc::new(locking.new());
                 let guard = locking.lock(&*pool, 5).await;
 
-                let counter = Arc::new(AtomicU32::new(0));
-
-                let child = launch_thread_async_lock(&locking, &pool, 5, &counter, None);
+                let child = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
 
                 // Check that even if we wait, the child thread won't get the lock
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(0, counter.load(Ordering::SeqCst));
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+                assert!(!child.entered_lock_section());
 
                 // Check that we can still lock other locks while the child is waiting
                 {
@@ -2120,8 +2157,8 @@ macro_rules! instantiate_lockable_tests {
                 std::mem::drop(guard);
 
                 // And check that the child got it
-                child.join().unwrap();
-                assert_eq!(1, counter.load(Ordering::SeqCst));
+                child.wait_for_lock_async().await;
+                child.release_and_wait();
 
                 assert_eq!(0, (*pool).borrow().num_entries_or_locked());
             }
@@ -2139,16 +2176,13 @@ macro_rules! instantiate_lockable_tests {
                 let pool = Arc::new(locking.new());
                 let guard = locking.lock(&pool, 5);
 
-                let counter = Arc::new(AtomicU32::new(0));
-                let barrier = Arc::new(Mutex::new(()));
-                let barrier_guard = barrier.lock().unwrap();
+                let mut child1 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
+                let mut child2 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
 
-                let child1 = launch_thread_sync_lock(&locking, &pool, 5, &counter, Some(&barrier));
-                let child2 = launch_thread_sync_lock(&locking, &pool, 5, &counter, Some(&barrier));
-
-                // Check that even if we wait, the child thread won't get the lock
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(0, counter.load(Ordering::SeqCst));
+                // Check that even if we wait, the child threads won't get the lock)
+                thread::sleep(Duration::from_millis(1000));
+                assert!(!child1.entered_lock_section());
+                assert!(!child2.entered_lock_section());
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
@@ -2159,16 +2193,20 @@ macro_rules! instantiate_lockable_tests {
                 std::mem::drop(guard);
 
                 // Check that a child got it
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(1, counter.load(Ordering::SeqCst));
+                $crate::tests::wait_for(|| {
+                    child1.entered_lock_section() ^ child2.entered_lock_section()
+                }, Duration::from_secs(1));
 
                 // Allow the child to free the lock
-                std::mem::drop(barrier_guard);
+                child1.release();
+                child2.release();
 
                 // Check that the other child got it
-                child1.join().unwrap();
-                child2.join().unwrap();
-                assert_eq!(2, counter.load(Ordering::SeqCst));
+                child1.wait_for_lock();
+                child2.wait_for_lock();
+
+                child1.release_and_wait();
+                child2.release_and_wait();
 
                 assert_eq!(0, (*pool).borrow().num_entries_or_locked());
             }
@@ -2180,16 +2218,13 @@ macro_rules! instantiate_lockable_tests {
                 let pool = Arc::new(locking.new());
                 let guard = locking.lock(&pool, 5).await;
 
-                let counter = Arc::new(AtomicU32::new(0));
-                let barrier = Arc::new(Mutex::new(()));
-                let barrier_guard = barrier.lock().unwrap();
-
-                let child1 = launch_thread_async_lock(&locking, &pool, 5, &counter, Some(&barrier));
-                let child2 = launch_thread_async_lock(&locking, &pool, 5, &counter, Some(&barrier));
+                let mut child1 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
+                let mut child2 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
 
                 // Check that even if we wait, the child thread won't get the lock
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(0, counter.load(Ordering::SeqCst));
+                thread::sleep(Duration::from_millis(1000));
+                assert!(!child1.entered_lock_section());
+                assert!(!child2.entered_lock_section());
 
                 // Check that we can stil lock other locks while the children are waiting
                 {
@@ -2200,16 +2235,21 @@ macro_rules! instantiate_lockable_tests {
                 std::mem::drop(guard);
 
                 // Check that a child got it
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(1, counter.load(Ordering::SeqCst));
+                thread::sleep(Duration::from_millis(1000));
+                $crate::tests::wait_for_async(|| {
+                    child1.entered_lock_section() ^ child2.entered_lock_section()
+                }, Duration::from_secs(1)).await;
 
                 // Allow the child to free the lock
-                std::mem::drop(barrier_guard);
+                child1.release();
+                child2.release();
 
                 // Check that the other child got it
-                child1.join().unwrap();
-                child2.join().unwrap();
-                assert_eq!(2, counter.load(Ordering::SeqCst));
+                child1.wait_for_lock();
+                child2.wait_for_lock();
+
+                child1.release_and_wait();
+                child2.release_and_wait();
 
                 assert_eq!(0, (*pool).borrow().num_entries_or_locked());
             }
