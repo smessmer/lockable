@@ -1876,11 +1876,11 @@ macro_rules! instantiate_lockable_tests {
                         locking.lock(&pool, 3).await.insert(String::from("Value 3"));
 
                         let guards: Vec<(isize, Option<String>)> =
-                        futures::executor::block_on(
-                            futures::executor::block_on(pool.borrow().lock_all_entries())
-                                .map(|guard| (*guard.key(), guard.value().cloned()))
-                                .collect()
-                        );
+                            futures::executor::block_on(
+                                futures::executor::block_on(pool.borrow().lock_all_entries())
+                                    .map(|guard| (*guard.key(), guard.value().cloned()))
+                                    .collect()
+                            );
                         crate::tests::assert_vec_eq_unordered(vec![
                             (3, Some(String::from("Value 3"))),
                             (4, Some(String::from("Value 4"))),
@@ -1914,7 +1914,7 @@ macro_rules! instantiate_lockable_tests {
                                 .peekable();
 
                         // Check that the stream doesn't produce any value while the entry is locked
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the entry
@@ -1944,7 +1944,7 @@ macro_rules! instantiate_lockable_tests {
                                 .peekable();
 
                         // Check that the stream doesn't produce any value while the entry is locked
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the entry
@@ -1960,7 +1960,7 @@ macro_rules! instantiate_lockable_tests {
                     $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
                 }
 
-                mod map_with_two_entries {
+                mod map_with_two_entries_all_are_locked {
                     use super::*;
 
                     fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
@@ -1983,13 +1983,13 @@ macro_rules! instantiate_lockable_tests {
                                 .peekable();
 
                         // Check that the stream doesn't produce any value while the entry is locked
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock one entry
                         child1.release_and_wait();
                         assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the other entry
@@ -2021,13 +2021,123 @@ macro_rules! instantiate_lockable_tests {
                                 .peekable();
 
                         // Check that the stream doesn't produce any value while the entry is locked
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock one entry
                         child1.release_and_wait();
                         assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(1000));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the other entry
+                        child2.release_and_wait();
+                        assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, guards_stream.next().await);
+                    }
+
+                    $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+                }
+
+                mod map_with_two_entries_some_are_locked {
+                    use super::*;
+
+                    fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 3).insert(String::from("Value 3"));
+                        locking.lock(&pool, 4).insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).insert(String::from("Value 5"));
+                        locking.lock(&pool, 6).insert(String::from("Value 6"));
+
+                        let child1 = LockingThread::launch_thread_sync_lock(&locking, &pool, 4);
+                        let child2 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
+
+                        child1.wait_for_lock();
+                        child2.wait_for_lock();
+
+                        let mut guards_stream =
+                            futures::executor::block_on(pool.deref().borrow().lock_all_entries())
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream produces the unlocked values while some other entries are locked
+                        let values = vec![
+                            futures::executor::block_on(guards_stream.next()),
+                            futures::executor::block_on(guards_stream.next()),
+                        ];
+                        $crate::tests::assert_vec_eq_unordered(
+                            vec![
+                                Some((3, Some(String::from("Value 3")))),
+                                Some((6, Some(String::from("Value 6")))),
+                            ],
+                            values,
+                        );
+
+                        // Check that even if we wait, it doesn't get any other values
+                        thread::sleep(Duration::from_millis(1000));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock one entry
+                        child1.release_and_wait();
+                        assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+                        thread::sleep(Duration::from_millis(1000));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock the other entry
+                        child2.release_and_wait();
+                        assert_eq!(Some((5, Some(String::from("Value 5")))), guards_stream.next_if_ready());
+
+                        // Assert there are no other entries
+                        assert_eq!(None, futures::executor::block_on(guards_stream.next()));
+                    }
+
+                    async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+                    where
+                        S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+                    {
+                        let pool = Arc::new(locking.new());
+                        locking.lock(&pool, 3).await.insert(String::from("Value 3"));
+                        locking.lock(&pool, 4).await.insert(String::from("Value 4"));
+                        locking.lock(&pool, 5).await.insert(String::from("Value 5"));
+                        locking.lock(&pool, 6).await.insert(String::from("Value 6"));
+
+                        let child1 = LockingThread::launch_thread_async_lock(&locking, &pool, 4).await;
+                        let child2 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
+
+                        child1.wait_for_lock();
+                        child2.wait_for_lock();
+
+                        let mut guards_stream =
+                            futures::executor::block_on(pool.deref().borrow().lock_all_entries())
+                                .map(|guard| (*guard.key(), guard.value().cloned()))
+                                .peekable();
+
+                        // Check that the stream produces the unlocked values while some other entries are locked
+                        let values = vec![
+                            guards_stream.next().await,
+                            guards_stream.next().await,
+                        ];
+                        $crate::tests::assert_vec_eq_unordered(
+                            vec![
+                                Some((3, Some(String::from("Value 3")))),
+                                Some((6, Some(String::from("Value 6")))),
+                            ],
+                            values,
+                        );
+
+                        // Check that even if we wait, it doesn't get any other values
+                        thread::sleep(Duration::from_millis(1000));
+                        assert_eq!(None, guards_stream.next_if_ready());
+
+                        // Unlock one entry
+                        child1.release_and_wait();
+                        assert_eq!(Some((4, Some(String::from("Value 4")))), guards_stream.next_if_ready());
+                        thread::sleep(Duration::from_millis(1000));
                         assert_eq!(None, guards_stream.next_if_ready());
 
                         // Unlock the other entry
