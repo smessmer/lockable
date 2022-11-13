@@ -543,6 +543,213 @@ macro_rules! instantiate_lockable_tests {
             $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
         }
 
+        mod multi {
+            use super::*;
+
+            fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
+            where
+                S: Borrow<$lockable_type<isize, String>>,
+            {
+                let pool = locking.new();
+                assert_eq!(0, pool.borrow().num_entries_or_locked());
+                let guard1 = locking.lock(&pool, 1);
+                assert!(guard1.value().is_none());
+                assert_eq!(1, pool.borrow().num_entries_or_locked());
+                let guard2 = locking.lock(&pool, 2);
+                assert!(guard2.value().is_none());
+                assert_eq!(2, pool.borrow().num_entries_or_locked());
+                let guard3 = locking.lock(&pool, 3);
+                assert!(guard3.value().is_none());
+                assert_eq!(3, pool.borrow().num_entries_or_locked());
+
+                std::mem::drop(guard2);
+                assert_eq!(2, pool.borrow().num_entries_or_locked());
+                std::mem::drop(guard1);
+                assert_eq!(1, pool.borrow().num_entries_or_locked());
+                std::mem::drop(guard3);
+                assert_eq!(0, pool.borrow().num_entries_or_locked());
+            }
+
+            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
+            where
+                S: Borrow<$lockable_type<isize, String>> + Sync,
+            {
+                let pool = locking.new();
+                assert_eq!(0, pool.borrow().num_entries_or_locked());
+                let guard1 = locking.lock(&pool, 1).await;
+                assert!(guard1.value().is_none());
+                assert_eq!(1, pool.borrow().num_entries_or_locked());
+                let guard2 = locking.lock(&pool, 2).await;
+                assert!(guard2.value().is_none());
+                assert_eq!(2, pool.borrow().num_entries_or_locked());
+                let guard3 = locking.lock(&pool, 3).await;
+                assert!(guard3.value().is_none());
+                assert_eq!(3, pool.borrow().num_entries_or_locked());
+
+                std::mem::drop(guard2);
+                assert_eq!(2, pool.borrow().num_entries_or_locked());
+                std::mem::drop(guard1);
+                assert_eq!(1, pool.borrow().num_entries_or_locked());
+                std::mem::drop(guard3);
+                assert_eq!(0, pool.borrow().num_entries_or_locked());
+            }
+
+            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+        }
+
+        mod concurrent {
+            use super::*;
+
+            fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+            {
+                let pool = Arc::new(locking.new());
+                let guard = locking.lock(&*pool, 5);
+
+                let child = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
+
+                // Check that even if we wait, the child thread won't get the lock
+                std::thread::sleep(Duration::from_millis(1000));
+                assert!(!child.entered_lock_section());
+
+                // Check that we can still lock other locks while the child is waiting
+                {
+                    let _g = locking.lock(&*pool, 4);
+                }
+
+                // Now free the lock so the child can get it
+                std::mem::drop(guard);
+
+                // And check that the child got it
+                child.wait_for_lock();
+                child.release_and_wait();
+
+                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
+            }
+
+            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+            {
+                let pool = Arc::new(locking.new());
+                let guard = locking.lock(&*pool, 5).await;
+
+                let child = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
+
+                // Check that even if we wait, the child thread won't get the lock
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+                assert!(!child.entered_lock_section());
+
+                // Check that we can still lock other locks while the child is waiting
+                {
+                    let _g = locking.lock(&*pool, 4).await;
+                }
+
+                // Now free the lock so the child can get it
+                std::mem::drop(guard);
+
+                // And check that the child got it
+                child.wait_for_lock_async().await;
+                child.release_and_wait();
+
+                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
+            }
+
+            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+        }
+
+        mod multi_concurrent {
+            use super::*;
+
+            fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+            {
+                let pool = Arc::new(locking.new());
+                let guard = locking.lock(&pool, 5);
+
+                let mut child1 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
+                let mut child2 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
+
+                // Check that even if we wait, the child threads won't get the lock)
+                thread::sleep(Duration::from_millis(1000));
+                assert!(!child1.entered_lock_section());
+                assert!(!child2.entered_lock_section());
+
+                // Check that we can stil lock other locks while the children are waiting
+                {
+                    let _g = locking.lock(&pool, 4);
+                }
+
+                // Now free the lock so a child can get it
+                std::mem::drop(guard);
+
+                // Check that a child got it
+                $crate::tests::wait_for(|| {
+                    child1.entered_lock_section() ^ child2.entered_lock_section()
+                }, Duration::from_secs(1));
+
+                // Allow the child to free the lock
+                child1.release();
+                child2.release();
+
+                // Check that the other child got it
+                child1.wait_for_lock();
+                child2.wait_for_lock();
+
+                child1.release_and_wait();
+                child2.release_and_wait();
+
+                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
+            }
+
+            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
+            where
+                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
+            {
+                let pool = Arc::new(locking.new());
+                let guard = locking.lock(&pool, 5).await;
+
+                let mut child1 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
+                let mut child2 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
+
+                // Check that even if we wait, the child thread won't get the lock
+                thread::sleep(Duration::from_millis(1000));
+                assert!(!child1.entered_lock_section());
+                assert!(!child2.entered_lock_section());
+
+                // Check that we can stil lock other locks while the children are waiting
+                {
+                    let _g = locking.lock(&pool, 4).await;
+                }
+
+                // Now free the lock so a child can get it
+                std::mem::drop(guard);
+
+                // Check that a child got it
+                thread::sleep(Duration::from_millis(1000));
+                $crate::tests::wait_for_async(|| {
+                    child1.entered_lock_section() ^ child2.entered_lock_section()
+                }, Duration::from_secs(1)).await;
+
+                // Allow the child to free the lock
+                child1.release();
+                child2.release();
+
+                // Check that the other child got it
+                child1.wait_for_lock();
+                child2.wait_for_lock();
+
+                child1.release_and_wait();
+                child2.release_and_wait();
+
+                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
+            }
+
+            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
+        }
+
         mod try_lock {
             use super::*;
 
@@ -2405,213 +2612,6 @@ macro_rules! instantiate_lockable_tests {
             }
             // TODO Test that lock_all_entries doesn't lock the whole map while the stream hasn't gotten all locks yet and still allows locking/unlocking locks.
             // TODO Duplicate the lock_all_entries test cases for lock_all_entries_owned (or use some macro to do it)
-        }
-
-        mod multi {
-            use super::*;
-
-            fn test_sync<S>(locking: impl SyncLocking<S, isize, String>)
-            where
-                S: Borrow<$lockable_type<isize, String>>,
-            {
-                let pool = locking.new();
-                assert_eq!(0, pool.borrow().num_entries_or_locked());
-                let guard1 = locking.lock(&pool, 1);
-                assert!(guard1.value().is_none());
-                assert_eq!(1, pool.borrow().num_entries_or_locked());
-                let guard2 = locking.lock(&pool, 2);
-                assert!(guard2.value().is_none());
-                assert_eq!(2, pool.borrow().num_entries_or_locked());
-                let guard3 = locking.lock(&pool, 3);
-                assert!(guard3.value().is_none());
-                assert_eq!(3, pool.borrow().num_entries_or_locked());
-
-                std::mem::drop(guard2);
-                assert_eq!(2, pool.borrow().num_entries_or_locked());
-                std::mem::drop(guard1);
-                assert_eq!(1, pool.borrow().num_entries_or_locked());
-                std::mem::drop(guard3);
-                assert_eq!(0, pool.borrow().num_entries_or_locked());
-            }
-
-            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String>)
-            where
-                S: Borrow<$lockable_type<isize, String>> + Sync,
-            {
-                let pool = locking.new();
-                assert_eq!(0, pool.borrow().num_entries_or_locked());
-                let guard1 = locking.lock(&pool, 1).await;
-                assert!(guard1.value().is_none());
-                assert_eq!(1, pool.borrow().num_entries_or_locked());
-                let guard2 = locking.lock(&pool, 2).await;
-                assert!(guard2.value().is_none());
-                assert_eq!(2, pool.borrow().num_entries_or_locked());
-                let guard3 = locking.lock(&pool, 3).await;
-                assert!(guard3.value().is_none());
-                assert_eq!(3, pool.borrow().num_entries_or_locked());
-
-                std::mem::drop(guard2);
-                assert_eq!(2, pool.borrow().num_entries_or_locked());
-                std::mem::drop(guard1);
-                assert_eq!(1, pool.borrow().num_entries_or_locked());
-                std::mem::drop(guard3);
-                assert_eq!(0, pool.borrow().num_entries_or_locked());
-            }
-
-            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-        }
-
-        mod concurrent {
-            use super::*;
-
-            fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
-            where
-                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            {
-                let pool = Arc::new(locking.new());
-                let guard = locking.lock(&*pool, 5);
-
-                let child = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
-
-                // Check that even if we wait, the child thread won't get the lock
-                std::thread::sleep(Duration::from_millis(1000));
-                assert!(!child.entered_lock_section());
-
-                // Check that we can still lock other locks while the child is waiting
-                {
-                    let _g = locking.lock(&*pool, 4);
-                }
-
-                // Now free the lock so the child can get it
-                std::mem::drop(guard);
-
-                // And check that the child got it
-                child.wait_for_lock();
-                child.release_and_wait();
-
-                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
-            }
-
-            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
-            where
-                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            {
-                let pool = Arc::new(locking.new());
-                let guard = locking.lock(&*pool, 5).await;
-
-                let child = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
-
-                // Check that even if we wait, the child thread won't get the lock
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-                assert!(!child.entered_lock_section());
-
-                // Check that we can still lock other locks while the child is waiting
-                {
-                    let _g = locking.lock(&*pool, 4).await;
-                }
-
-                // Now free the lock so the child can get it
-                std::mem::drop(guard);
-
-                // And check that the child got it
-                child.wait_for_lock_async().await;
-                child.release_and_wait();
-
-                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
-            }
-
-            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
-        }
-
-        mod multi_concurrent {
-            use super::*;
-
-            fn test_sync<S>(locking: impl SyncLocking<S, isize, String> + Sync + 'static)
-            where
-                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            {
-                let pool = Arc::new(locking.new());
-                let guard = locking.lock(&pool, 5);
-
-                let mut child1 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
-                let mut child2 = LockingThread::launch_thread_sync_lock(&locking, &pool, 5);
-
-                // Check that even if we wait, the child threads won't get the lock)
-                thread::sleep(Duration::from_millis(1000));
-                assert!(!child1.entered_lock_section());
-                assert!(!child2.entered_lock_section());
-
-                // Check that we can stil lock other locks while the children are waiting
-                {
-                    let _g = locking.lock(&pool, 4);
-                }
-
-                // Now free the lock so a child can get it
-                std::mem::drop(guard);
-
-                // Check that a child got it
-                $crate::tests::wait_for(|| {
-                    child1.entered_lock_section() ^ child2.entered_lock_section()
-                }, Duration::from_secs(1));
-
-                // Allow the child to free the lock
-                child1.release();
-                child2.release();
-
-                // Check that the other child got it
-                child1.wait_for_lock();
-                child2.wait_for_lock();
-
-                child1.release_and_wait();
-                child2.release_and_wait();
-
-                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
-            }
-
-            async fn test_async<S>(locking: impl AsyncLocking<S, isize, String> + Sync + 'static)
-            where
-                S: Borrow<$lockable_type<isize, String>> + Send + Sync + 'static,
-            {
-                let pool = Arc::new(locking.new());
-                let guard = locking.lock(&pool, 5).await;
-
-                let mut child1 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
-                let mut child2 = LockingThread::launch_thread_async_lock(&locking, &pool, 5).await;
-
-                // Check that even if we wait, the child thread won't get the lock
-                thread::sleep(Duration::from_millis(1000));
-                assert!(!child1.entered_lock_section());
-                assert!(!child2.entered_lock_section());
-
-                // Check that we can stil lock other locks while the children are waiting
-                {
-                    let _g = locking.lock(&pool, 4).await;
-                }
-
-                // Now free the lock so a child can get it
-                std::mem::drop(guard);
-
-                // Check that a child got it
-                thread::sleep(Duration::from_millis(1000));
-                $crate::tests::wait_for_async(|| {
-                    child1.entered_lock_section() ^ child2.entered_lock_section()
-                }, Duration::from_secs(1)).await;
-
-                // Allow the child to free the lock
-                child1.release();
-                child2.release();
-
-                // Check that the other child got it
-                child1.wait_for_lock();
-                child2.wait_for_lock();
-
-                child1.release_and_wait();
-                child2.release_and_wait();
-
-                assert_eq!(0, (*pool).borrow().num_entries_or_locked());
-            }
-
-            $crate::instantiate_lockable_tests!(@gen_tests, $lockable_type, test_sync, test_async);
         }
 
         #[test]
