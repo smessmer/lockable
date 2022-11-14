@@ -204,6 +204,8 @@ where
     K: Eq + PartialEq + Hash + Clone,
 {
     /// Create a new hash map with no entries and no locked keys.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -214,6 +216,8 @@ where
     /// Return the number of cache entries.
     ///
     /// Corner case: Currently locked keys are counted even if they don't have any data in the cache.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self.map_impl.num_entries_or_locked()
@@ -628,6 +632,8 @@ where
     }
 
     /// Consumes the cache and returns an iterator over all of its entries.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
         self.map_impl
@@ -640,6 +646,8 @@ where
     ///
     /// This function has a high performance cost because it needs to lock the whole
     /// map to get a consistent snapshot and clone all the keys.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn keys_with_entries_or_locked(&self) -> Vec<K> {
         self.map_impl.keys_with_entries_or_locked()
@@ -647,6 +655,9 @@ where
 
     /// Lock all entries that are currently unlocked and that were unlocked for at least
     /// the given `duration`. This follows the LRU nature of the cache.
+    ///
+    /// TODO Add example
+    ///
     /// TODO Test whether the returned iterator keeps a lock on the whole map and if yes,
     ///      try to fix that or at least document it.
     /// TODO Test
@@ -678,6 +689,8 @@ where
     /// - If that thread/task creates the entry => the stream will return it
     /// - If that thread/task removes the entry => the stream will not return it
     /// - If the entry was not pre-existing and that thread/task does not create it => the stream will not return it.
+    ///
+    /// TODO Add example
     pub async fn lock_all_entries(
         &self,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
@@ -692,6 +705,8 @@ where
     /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
     /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that
     /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// TODO Add example
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {

@@ -57,6 +57,8 @@ where
     }
 
     /// Returns the key of the entry that was locked with this guard.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn key(&self) -> &M::K {
         &self.key
@@ -71,6 +73,8 @@ where
     ///
     /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
     /// and no other thread or task can lock the same key.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn value(&self) -> Option<&V> {
         // We're returning Option<&V> instead of &Option<V> so that
@@ -83,6 +87,8 @@ where
     ///
     /// If the locked entry didn't exist, then this returns None, but the guard still represents a lock on this key
     /// and no other thread or task can lock the same key.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn value_mut(&mut self) -> Option<&mut V> {
         // We're returning Option<&M::V> instead of &Option<M::V> so that
@@ -94,6 +100,8 @@ where
     /// Removes the entry this guard has locked from the map.
     ///
     /// If the entry existed, its value is returned. If the entry didn't exist, [None] is returned.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it
@@ -105,6 +113,8 @@ where
     ///
     /// If the entry existed already, its old value is returned. If the entry didn't exist yet, [None] is returned.
     /// In both cases, the map will contain the new value after the call.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
         let old_value = self._guard_mut().value.replace(M::V::fi_from(value));
@@ -115,6 +125,8 @@ where
     /// If it already existed, this call returns [TryInsertError::AlreadyExists] instead.
     ///
     /// This function also returns a mutable reference to the new entry, which can be used to further modify it.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
         let guard = self._guard_mut();
@@ -134,6 +146,8 @@ where
     ///
     /// If the entry doesn't exist, then `value_fn` is invoked to create it, the value
     /// is added to the map, and then a mutable reference to it is returned.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
         let guard = self._guard_mut();
@@ -151,6 +165,8 @@ where
     ///
     /// If the entry doesn't exist, then `value` is inserted into the map for this entry,
     /// and then a mutable reference to it is returned.
+    ///
+    /// TODO Add example
     #[inline]
     pub fn value_or_insert(&mut self, value: V) -> &mut V {
         self.value_or_insert_with(move || value)

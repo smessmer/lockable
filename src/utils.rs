@@ -4,6 +4,10 @@ use futures::{
 };
 
 pub trait MyStreamExt: Stream {
+    /// Return the next value from the stream if there is a value ready.
+    /// Otherwise, return [None].
+    ///
+    /// TODO Add example
     fn next_if_ready(&mut self) -> Option<Self::Item>;
 }
 

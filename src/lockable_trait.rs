@@ -7,6 +7,8 @@ pub trait Lockable<K, V> {
     /// and its lifetime is bound to the lifetime of the [LockableHashMap](crate::LockableHashMap)/[LockableLruCache](crate::LockableLruCache).
     ///
     /// See the documentation of [Guard](crate::Guard) for methods.
+    ///
+    /// TODO Add example
     type Guard<'a>
     where
         Self: 'a,
@@ -19,5 +21,7 @@ pub trait Lockable<K, V> {
     /// and its lifetime is bound to the lifetime of the [LockableHashMap](crate::LockableHashMap)/[LockableLruCache](crate::LockableLruCache) within its [Arc](std::sync::Arc).
     ///
     /// See the documentation of [Guard](crate::Guard) for methods.
+    ///
+    /// TODO Add example
     type OwnedGuard;
 }
