@@ -68,7 +68,7 @@ where
     /// let guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
     ///
     /// assert_eq!(4, *guard.key());
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn key(&self) -> &M::K {
@@ -107,7 +107,7 @@ where
     ///     // Now this entry exists
     ///     assert_eq!(Some(&String::from("Hello World")), guard.value());
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn value(&self) -> Option<&V> {
@@ -150,7 +150,7 @@ where
     ///     // Now it has the new value
     ///     assert_eq!(Some(&String::from("New Value")), guard.value());
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn value_mut(&mut self) -> Option<&mut V> {
@@ -192,7 +192,7 @@ where
     ///     // Now the value doesn't exist anymore
     ///     assert_eq!(None, guard.value());
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn remove(&mut self) -> Option<V> {
@@ -228,7 +228,7 @@ where
     ///     // Now the value exists
     ///     assert_eq!(Some(&String::from("Hello World")), guard.value());
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
@@ -262,7 +262,7 @@ where
     ///     let insert_result = guard.try_insert(String::from("Hello World"));
     ///     assert!(insert_result.is_err());
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
@@ -306,7 +306,7 @@ where
     ///     let value = guard.value_or_insert_with(|| String::from("New Value"));
     ///     assert_eq!(&String::from("Old Value"), value);
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
@@ -348,7 +348,7 @@ where
     ///     let value = guard.value_or_insert(String::from("New Value"));
     ///     assert_eq!(&String::from("Old Value"), value);
     /// }
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn value_or_insert(&mut self, value: V) -> &mut V {

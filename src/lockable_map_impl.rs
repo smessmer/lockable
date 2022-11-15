@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Result};
 use futures::stream::{FuturesUnordered, Stream, StreamExt};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
@@ -435,8 +434,7 @@ where
             .into_iter()
             .filter_map(|(key, value)| {
                 let value = Arc::try_unwrap(value)
-                    .map_err(|_| anyhow!("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc."))
-                    .unwrap();
+                    .unwrap_or_else(|_| panic!("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc."));
                 let value = value.into_inner();
 
                 // Ignore None entries since they don't actually exist in the map and were only created so we have a place to put the mutex.

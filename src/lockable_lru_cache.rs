@@ -1,4 +1,3 @@
-use anyhow::Result;
 use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::{Borrow, BorrowMut};
@@ -126,24 +125,23 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(entry1);
 /// let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
-/// # Ok::<(), anyhow::Error>(())}).unwrap();
+/// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
 /// The guards holding a lock for an entry can be used to insert that entry to the cache, remove
 /// it from the cache, or to modify the value of an existing entry.
 ///
 /// ```
-/// use anyhow::Result;
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<()> {
+/// async fn insert_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
 ///     Ok(())
 /// }
 ///
-/// async fn remove_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<()> {
+/// async fn remove_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
 ///     Ok(())
@@ -155,7 +153,7 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// assert_eq!(Some(&String::from("Hello World")), lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
 /// remove_entry(&lockable_cache).await;
 /// assert_eq!(None, lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
-/// # Ok::<(), anyhow::Error>(())}).unwrap();
+/// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
 ///
@@ -170,7 +168,7 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// let lockable_cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let guard = lockable_cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
-/// # Ok::<(), anyhow::Error>(())}).unwrap();
+/// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
 /// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
@@ -239,7 +237,7 @@ where
     ///
     /// // Now we have two entries and one additional locked guard
     /// assert_eq!(3, lockable_map.num_entries_or_locked());
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
@@ -285,7 +283,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.blocking_lock(4, SyncLimit::no_limit())?;
-    /// # Ok::<(), anyhow::Error>(())})().unwrap();
+    /// # Ok::<(), lockable::Never>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock<'a, E, OnEvictFn>(
@@ -330,7 +328,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.blocking_lock_owned(4, SyncLimit::no_limit())?;
-    /// # Ok::<(), anyhow::Error>(())})().unwrap();
+    /// # Ok::<(), lockable::Never>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock_owned<E, OnEvictFn>(
@@ -382,7 +380,7 @@ where
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.try_lock(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
-    /// # Ok::<(), anyhow::Error>(())})().unwrap();
+    /// # Ok::<(), lockable::Never>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock<'a, E, OnEvictFn>(
@@ -429,7 +427,7 @@ where
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.try_lock_owned(4, SyncLimit::no_limit())?;
     /// assert!(guard3.is_some());
-    /// # Ok::<(), anyhow::Error>(())})().unwrap();
+    /// # Ok::<(), lockable::Never>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock_owned<E, OnEvictFn>(
@@ -477,7 +475,7 @@ where
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.try_lock_async(4, AsyncLimit::no_limit()).await?;
     /// assert!(guard3.is_some());
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub async fn try_lock_async<'a, E, F, OnEvictFn>(
@@ -530,7 +528,7 @@ where
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_cache.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
     /// assert!(guard3.is_some());
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub async fn try_lock_owned_async<E, F, OnEvictFn>(
@@ -581,7 +579,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub async fn async_lock<'a, E, F, OnEvictFn>(
@@ -631,7 +629,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub async fn async_lock_owned<E, F, OnEvictFn>(
@@ -682,7 +680,7 @@ where
     /// assert_eq!(2, entries.len());
     /// assert!(entries.contains(&(4, String::from("Value 4"))));
     /// assert!(entries.contains(&(5, String::from("Value 5"))));
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
@@ -724,7 +722,7 @@ where
     /// assert!(keys.contains(&4));
     /// assert!(keys.contains(&5));
     /// assert!(keys.contains(&6));
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
     pub fn keys_with_entries_or_locked(&self) -> Vec<K> {
@@ -775,7 +773,7 @@ where
     /// assert_eq!(2, entries.len());
     /// assert!(entries.contains(&(4, String::from("Value 4"))));
     /// assert!(entries.contains(&(5, String::from("Value 5"))));
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     pub async fn lock_all_entries(
         &self,
@@ -823,7 +821,7 @@ where
     /// assert_eq!(2, entries.len());
     /// assert!(entries.contains(&(4, String::from("Value 4"))));
     /// assert!(entries.contains(&(5, String::from("Value 5"))));
-    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
