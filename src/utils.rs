@@ -7,7 +7,24 @@ pub trait MyStreamExt: Stream {
     /// Return the next value from the stream if there is a value ready.
     /// Otherwise, return [None].
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```ignore
+    /// use lockable::utils::MyStreamExt;
+    ///
+    /// // A stream with a pending future that can be fulfilled later.
+    /// let (sender, receiver) = futures::channel::oneshot::channel::<i32>();
+    /// let mut stream = futures::stream::once(receiver);
+    ///
+    /// // The next value is not ready yet, so this returns None.
+    /// assert_eq!(stream.next_if_ready(), None);
+    ///
+    /// // Fulfill the future and the next value is now ready.
+    /// sender.send(42).unwrap();
+    ///
+    /// // The next value is now ready, so this returns Some(42).
+    /// assert_eq!(Some(Ok(42)), stream.next_if_ready());
+    /// ```
     fn next_if_ready(&mut self) -> Option<Self::Item>;
 }
 

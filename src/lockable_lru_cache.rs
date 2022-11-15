@@ -203,7 +203,16 @@ where
 {
     /// Create a new hash map with no entries and no locked keys.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{AsyncLimit, LockableLruCache};
+    ///
+    /// let lockable_map: LockableLruCache<i64, String> = LockableLruCache::new();
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
     #[inline]
     pub fn new() -> Self {
         Self {
