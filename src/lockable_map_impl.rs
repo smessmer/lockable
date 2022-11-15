@@ -344,7 +344,7 @@ where
     /// - creates the entry => the stream will return them
     /// - removes the entry => the stream will not return them
     /// - entries that were locked by another thread or task but don't have a value will not be returned
-    pub async fn lock_all<S: Borrow<Self> + Clone>(
+    pub async fn lock_all_entries<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Stream<Item = Guard<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();

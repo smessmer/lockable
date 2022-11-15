@@ -164,7 +164,31 @@ where
     /// Return the number of map entries.
     ///
     /// Corner case: Currently locked keys are counted even if they don't exist in the map.
-    /// TODO Add example
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    /// // Keep a lock on a third entry but don't insert it
+    /// let guard = lockable_map.async_lock(6, AsyncLimit::no_limit()).await?;
+    ///
+    /// // Now we have two entries and one additional locked guard
+    /// assert_eq!(3, lockable_map.num_entries_or_locked());
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
         self.map_impl.num_entries_or_locked()
@@ -473,16 +497,16 @@ where
     /// use lockable::{LockableHashMap, AsyncLimit};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// let locakble_map = LockableHashMap::<i64, String>::new();
-    /// let guard1 = locakble_map.async_lock(4, AsyncLimit::no_limit()).await?;
-    /// let guard2 = locakble_map.async_lock(5, AsyncLimit::no_limit()).await?;
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    /// let guard1 = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = locakble_map.async_lock(4).await?;
+    /// // let guard3 = lockable_map.async_lock(4).await?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = locakble_map.async_lock(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
     /// # Ok::<(), anyhow::Error>(())}).unwrap();
     /// ```
     #[inline]
@@ -523,16 +547,16 @@ where
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// let locakble_map = Arc::new(LockableHashMap::<i64, String>::new());
-    /// let guard1 = locakble_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
-    /// let guard2 = locakble_map.async_lock_owned(5, AsyncLimit::no_limit()).await?;
+    /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
+    /// let guard1 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// let guard2 = lockable_map.async_lock_owned(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
-    /// // let guard3 = locakble_map.async_lock_owned(4).await?;
+    /// // let guard3 = lockable_map.async_lock_owned(4).await?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = locakble_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
     /// # Ok::<(), anyhow::Error>(())}).unwrap();
     /// ```
     #[inline]
@@ -550,7 +574,34 @@ where
 
     /// Consumes the hash map and returns an iterator over all of its entries.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// let entries: Vec<(i64, String)> = lockable_map
+    ///     .into_entries_unordered()
+    ///     .collect();
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     #[inline]
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, V)> {
         self.map_impl.into_entries_unordered()
@@ -562,7 +613,35 @@ where
     /// This function has a high performance cost because it needs to lock the whole
     /// map to get a consistent snapshot and clone all the keys.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    /// // Keep a lock on a third entry but don't insert it
+    /// let guard = lockable_map.async_lock(6, AsyncLimit::no_limit()).await?;
+    ///
+    /// let keys: Vec<i64> = lockable_map.keys_with_entries_or_locked();
+    ///
+    /// // `keys` now contains all three keys
+    /// assert_eq!(3, keys.len());
+    /// assert!(keys.contains(&4));
+    /// assert!(keys.contains(&5));
+    /// assert!(keys.contains(&6));
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     #[inline]
     pub fn keys_with_entries_or_locked(&self) -> Vec<K> {
         self.map_impl.keys_with_entries_or_locked()
@@ -582,11 +661,42 @@ where
     /// - If that thread/task removes the entry => the stream will not return it
     /// - If the entry was not pre-existing and that thread/task does not create it => the stream will not return it.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use futures::stream::StreamExt;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     pub async fn lock_all_entries(
         &self,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>> {
-        LockableMapImpl::lock_all(&self.map_impl).await
+        LockableMapImpl::lock_all_entries(&self.map_impl).await
     }
 
     /// Lock all entries of the cache once. The result of this is a [Stream] that will
@@ -598,11 +708,43 @@ where
     /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableHashMap] in that
     /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use futures::stream::StreamExt;
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries_owned().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), anyhow::Error>(())}).unwrap();
+    /// ```
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
     ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
-        LockableMapImpl::lock_all(Arc::clone(self)).await
+        LockableMapImpl::lock_all_entries(Arc::clone(self)).await
     }
 }
 
