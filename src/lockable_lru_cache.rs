@@ -851,13 +851,21 @@ where
     /// let lockable_map = LockableLruCache::<i64, String>::new();
     /// lockable_map.async_lock(1, AsyncLimit::no_limit())
     ///     .await?.insert(String::from("Value 1"));
+    /// lockable_map.async_lock(2, AsyncLimit::no_limit())
+    ///     .await?.insert(String::from("Value 2"));
     ///
     /// time::sleep(Duration::from_secs(1)).await;
+    ///
+    /// // Lock and unlock entry 1
+    /// lockable_map.async_lock(1, AsyncLimit::no_limit()).await?;
+    ///
+    /// // Only entry 2 was unlocked more than a second ago
+    ///
     /// let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = lockable_map
     ///     .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
     ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
     ///     .collect();
-    /// assert_eq!(vec![(1, String::from("Value 1"))], unlocked_for_at_least_half_a_sec);
+    /// assert_eq!(vec![(2, String::from("Value 2"))], unlocked_for_at_least_half_a_sec);
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     ///
@@ -889,13 +897,21 @@ where
     /// let lockable_map = Arc::new(LockableLruCache::<i64, String>::new());
     /// lockable_map.async_lock(1, AsyncLimit::no_limit())
     ///     .await?.insert(String::from("Value 1"));
+    /// lockable_map.async_lock(2, AsyncLimit::no_limit())
+    ///     .await?.insert(String::from("Value 2"));
     ///
     /// time::sleep(Duration::from_secs(1)).await;
+    ///
+    /// // Lock and unlock entry 1
+    /// lockable_map.async_lock(1, AsyncLimit::no_limit()).await?;
+    ///
+    /// // Only entry 2 was unlocked more than half a second ago
+    ///
     /// let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = lockable_map
     ///     .lock_entries_unlocked_for_at_least_owned(Duration::from_millis(500))
     ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
     ///     .collect();
-    /// assert_eq!(vec![(1, String::from("Value 1"))], unlocked_for_at_least_half_a_sec);
+    /// assert_eq!(vec![(2, String::from("Value 2"))], unlocked_for_at_least_half_a_sec);
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     ///
