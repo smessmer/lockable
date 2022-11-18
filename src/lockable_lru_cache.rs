@@ -794,7 +794,7 @@ where
     /// produce the corresponding lock guards. If items are locked, the [Stream] will
     /// produce them as they become unlocked and can be locked by the stream.
     ///
-    /// This is identical to [LockableLruCache::lock_all_entries], but but it works on
+    /// This is identical to [LockableLruCache::lock_all_entries], but it works on
     /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
     /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that
     /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
@@ -841,20 +841,84 @@ where
     /// Lock all entries that are currently unlocked and that were unlocked for at least
     /// the given `duration`. This follows the LRU nature of the cache.
     ///
-    /// TODO Add example
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use tokio::time::{Duration, self};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableLruCache::<i64, String>::new();
+    /// lockable_map.async_lock(1, AsyncLimit::no_limit())
+    ///     .await?.insert(String::from("Value 1"));
+    ///
+    /// time::sleep(Duration::from_secs(1)).await;
+    /// let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = lockable_map
+    ///     .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+    ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+    ///     .collect();
+    /// assert_eq!(vec![(1, String::from("Value 1"))], unlocked_for_at_least_half_a_sec);
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
     ///
     /// TODO Test whether the returned iterator keeps a lock on the whole map and if yes,
     ///      try to fix that or at least document it.
+    pub fn lock_entries_unlocked_for_at_least(
+        &self,
+        duration: Duration,
+    ) -> impl Iterator<Item = <Self as Lockable<K, V>>::Guard<'_>> {
+        Self::_lock_entries_unlocked_for_at_least(&self.map_impl, duration)
+    }
+
+    /// Lock all entries that are currently unlocked and that were unlocked for at least
+    /// the given `duration`. This follows the LRU nature of the cache.
+    ///
+    /// This is identical to [LockableLruCache::lock_entries_unlocked_for_at_least], but it works on
+    /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
+    /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that
+    /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// Examples
+    /// -----
+    /// ```
+    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use tokio::time::{Duration, self};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = Arc::new(LockableLruCache::<i64, String>::new());
+    /// lockable_map.async_lock(1, AsyncLimit::no_limit())
+    ///     .await?.insert(String::from("Value 1"));
+    ///
+    /// time::sleep(Duration::from_secs(1)).await;
+    /// let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = lockable_map
+    ///     .lock_entries_unlocked_for_at_least_owned(Duration::from_millis(500))
+    ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+    ///     .collect();
+    /// assert_eq!(vec![(1, String::from("Value 1"))], unlocked_for_at_least_half_a_sec);
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
+    ///
     /// TODO Test
     pub fn lock_entries_unlocked_for_at_least_owned(
         self: &Arc<Self>,
         duration: Duration,
     ) -> impl Iterator<Item = <Self as Lockable<K, V>>::OwnedGuard> {
+        Self::_lock_entries_unlocked_for_at_least(Arc::clone(self), duration)
+    }
+
+    fn _lock_entries_unlocked_for_at_least<
+        S: Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>> + Clone,
+    >(
+        this: S,
+        duration: Duration,
+    ) -> impl Iterator<Item = Guard<MapImpl<K, V>, V, LruCacheHooks, S>> {
         // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
         let now = Instant::now();
-        LockableMapImpl::lock_all_unlocked(Arc::clone(self)).filter(move |entry| {
+        let cutoff = now - duration;
+        LockableMapImpl::lock_all_unlocked(this).filter(move |entry| {
             if let Some(entry) = entry.value_raw() {
-                entry.last_unlocked + duration <= now
+                entry.last_unlocked <= cutoff
             } else {
                 false
             }

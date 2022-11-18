@@ -8,7 +8,17 @@ pub trait Lockable<K, V> {
     ///
     /// See the documentation of [Guard](crate::Guard) for methods.
     ///
-    /// TODO Add example
+    /// Examples:
+    /// -----
+    /// ```
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let map = LockableHashMap::<usize, String>::new();
+    /// let guard: <LockableHashMap<usize, String> as Lockable<usize, String>>::Guard<'_> =
+    ///     map.async_lock(1, AsyncLimit::no_limit()).await?;
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
     type Guard<'a>
     where
         Self: 'a,
@@ -22,6 +32,17 @@ pub trait Lockable<K, V> {
     ///
     /// See the documentation of [Guard](crate::Guard) for methods.
     ///
-    /// TODO Add example
+    /// Examples:
+    /// -----
+    /// ```
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let map = Arc::new(LockableHashMap::<usize, String>::new());
+    /// let guard: <LockableHashMap<usize, String> as Lockable<usize, String>>::OwnedGuard =
+    ///     map.async_lock_owned(1, AsyncLimit::no_limit()).await?;
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
     type OwnedGuard;
 }
