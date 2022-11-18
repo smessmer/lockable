@@ -1,5 +1,7 @@
 //! TODO Crate level documentation
 
+// TODO rustfmt on all code examples
+
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
