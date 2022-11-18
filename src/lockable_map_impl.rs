@@ -333,6 +333,8 @@ where
                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                 Err(_) => None,
             })
+            // Collecting into a Vec so that we don't have to keep `cache_entries` locked
+            // while the returned iterator is alive.
             .collect::<Vec<_>>()
             .into_iter()
     }

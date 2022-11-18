@@ -1,6 +1,7 @@
 //! TODO Crate level documentation
 
 // TODO rustfmt on all code examples
+// TODO Figure out which functions actually should or shouldn't be #[inline]
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
