@@ -859,7 +859,7 @@ where
     /// // Lock and unlock entry 1
     /// lockable_map.async_lock(1, AsyncLimit::no_limit()).await?;
     ///
-    /// // Only entry 2 was unlocked more than a second ago
+    /// // Only entry 2 was unlocked more than half a second ago
     ///
     /// let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = lockable_map
     ///     .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
