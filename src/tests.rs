@@ -53,7 +53,7 @@ impl<M, V, H, P> Guard<M::K, V> for crate::guard::Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: crate::hooks::Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + crate::lockable_map_impl::FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + crate::lockable_map_impl::FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn key(&self) -> &M::K {

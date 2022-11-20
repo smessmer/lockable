@@ -15,6 +15,7 @@ use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
+use super::time::{RealTime, TimeProvider};
 
 type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>>>>>;
 
@@ -82,12 +83,15 @@ impl<V> BorrowMut<V> for CacheEntry<V> {
 
 // FromInto is used to allow Guard to offer an API to insert V values while
 // the cache actually stores values as CacheEntry<V>
-impl<V> FromInto<V> for CacheEntry<V> {
-    fn fi_from(value: V) -> CacheEntry<V> {
+impl<V, Time> FromInto<V, LruCacheHooks<Time>> for CacheEntry<V>
+where
+    Time: TimeProvider + Clone,
+{
+    fn fi_from(value: V, hooks: &LruCacheHooks<Time>) -> CacheEntry<V> {
         CacheEntry {
             value,
             // last_unlocked is now since the entry was just freshly inserted
-            last_unlocked: Instant::now(),
+            last_unlocked: hooks.time_provider.now(),
         }
     }
     fn fi_into(self) -> V {
@@ -97,11 +101,14 @@ impl<V> FromInto<V> for CacheEntry<V> {
 
 // LruCacheHooks ensure that whenever we unlock an entry, its last_unlocked
 // timestamp gets updated
-pub struct LruCacheHooks;
-impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
+#[derive(Clone)]
+pub struct LruCacheHooks<Time: TimeProvider + Clone> {
+    time_provider: Time,
+}
+impl<V, Time: TimeProvider + Clone> Hooks<CacheEntry<V>> for LruCacheHooks<Time> {
     fn on_unlock(&self, v: Option<&mut CacheEntry<V>>) {
         if let Some(v) = v {
-            v.last_unlocked = Instant::now();
+            v.last_unlocked = self.time_provider.now();
         }
     }
 }
@@ -199,32 +206,37 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// Under the hood, a [LockableLruCache] is a [lru::LruCache] of [Mutex](tokio::sync::Mutex)es, with some logic making sure that
 /// empty entries can also be locked and that there aren't any race conditions when adding or removing entries.
 #[derive(Debug)]
-pub struct LockableLruCache<K, V>
+pub struct LockableLruCache<K, V, Time = RealTime>
 where
     K: Eq + PartialEq + Hash + Clone,
+    Time: TimeProvider + Default + Clone,
 {
-    map_impl: LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+    map_impl: LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
 }
 
-impl<K, V> Lockable<K, V> for LockableLruCache<K, V>
+impl<K, V, Time> Lockable<K, V> for LockableLruCache<K, V, Time>
 where
     K: Eq + PartialEq + Hash + Clone,
+    Time: TimeProvider + Default + Clone,
 {
     type Guard<'a> = Guard<
-    MapImpl<K, V>,
-    V,
-    LruCacheHooks,
-    &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
-> where
-    K: 'a,
-    V: 'a;
+        MapImpl<K, V>,
+        V,
+        LruCacheHooks<Time>,
+        &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
+    > where
+        K: 'a,
+        V: 'a,
+        Time: 'a;
 
-    type OwnedGuard = Guard<MapImpl<K, V>, V, LruCacheHooks, Arc<LockableLruCache<K, V>>>;
+    type OwnedGuard =
+        Guard<MapImpl<K, V>, V, LruCacheHooks<Time>, Arc<LockableLruCache<K, V, Time>>>;
 }
 
-impl<K, V> LockableLruCache<K, V>
+impl<K, V, Time> LockableLruCache<K, V, Time>
 where
     K: Eq + PartialEq + Hash + Clone,
+    Time: TimeProvider + Default + Clone,
 {
     /// Create a new hash map with no entries and no locked keys.
     ///
@@ -240,8 +252,9 @@ where
     /// ```
     #[inline]
     pub fn new() -> Self {
+        let time_provider = Time::default();
         Self {
-            map_impl: LockableMapImpl::new_with_hooks(LruCacheHooks),
+            map_impl: LockableMapImpl::new_with_hooks(LruCacheHooks { time_provider }),
         }
     }
 
@@ -326,8 +339,8 @@ where
         limit: SyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            LruCacheHooks<Time>,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
             E,
             OnEvictFn,
         >,
@@ -371,8 +384,8 @@ where
         limit: SyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            Arc<LockableLruCache<K, V>>,
+            LruCacheHooks<Time>,
+            Arc<LockableLruCache<K, V, Time>>,
             E,
             OnEvictFn,
         >,
@@ -423,8 +436,8 @@ where
         limit: SyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            LruCacheHooks<Time>,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
             E,
             OnEvictFn,
         >,
@@ -470,8 +483,8 @@ where
         limit: SyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            Arc<LockableLruCache<K, V>>,
+            LruCacheHooks<Time>,
+            Arc<LockableLruCache<K, V, Time>>,
             E,
             OnEvictFn,
         >,
@@ -522,8 +535,8 @@ where
         limit: AsyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            LruCacheHooks<Time>,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
             E,
             F,
             OnEvictFn,
@@ -579,8 +592,8 @@ where
         limit: AsyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            Arc<LockableLruCache<K, V>>,
+            LruCacheHooks<Time>,
+            Arc<LockableLruCache<K, V, Time>>,
             E,
             F,
             OnEvictFn,
@@ -630,8 +643,8 @@ where
         limit: AsyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>,
+            LruCacheHooks<Time>,
+            &'a LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>,
             E,
             F,
             OnEvictFn,
@@ -686,8 +699,8 @@ where
         limit: AsyncLimit<
             MapImpl<K, V>,
             V,
-            LruCacheHooks,
-            Arc<LockableLruCache<K, V>>,
+            LruCacheHooks<Time>,
+            Arc<LockableLruCache<K, V, Time>>,
             E,
             F,
             OnEvictFn,
@@ -919,7 +932,11 @@ where
         &self,
         duration: Duration,
     ) -> impl Iterator<Item = <Self as Lockable<K, V>>::Guard<'_>> {
-        Self::_lock_entries_unlocked_for_at_least(&self.map_impl, duration)
+        Self::_lock_entries_unlocked_for_at_least(
+            &self.map_impl,
+            self.map_impl.hooks().time_provider.now(),
+            duration,
+        )
     }
 
     /// Lock all entries that are currently unlocked and that were unlocked for at least
@@ -969,17 +986,21 @@ where
         self: &Arc<Self>,
         duration: Duration,
     ) -> impl Iterator<Item = <Self as Lockable<K, V>>::OwnedGuard> {
-        Self::_lock_entries_unlocked_for_at_least(Arc::clone(self), duration)
+        Self::_lock_entries_unlocked_for_at_least(
+            Arc::clone(self),
+            self.map_impl.hooks().time_provider.now(),
+            duration,
+        )
     }
 
     fn _lock_entries_unlocked_for_at_least<
-        S: Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>> + Clone,
+        S: Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>> + Clone,
     >(
         this: S,
+        now: Instant,
         duration: Duration,
-    ) -> impl Iterator<Item = Guard<MapImpl<K, V>, V, LruCacheHooks, S>> {
+    ) -> impl Iterator<Item = Guard<MapImpl<K, V>, V, LruCacheHooks<Time>, S>> {
         // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
-        let now = Instant::now();
         let cutoff = now - duration;
         LockableMapImpl::lock_all_unlocked(this).filter(move |entry| {
             if let Some(entry) = entry.value_raw() {
@@ -989,11 +1010,17 @@ where
             }
         })
     }
+
+    #[cfg(test)]
+    fn time_provider_mut(&mut self) -> &mut Time {
+        &mut self.map_impl.hooks_mut().time_provider
+    }
 }
 
-impl<K, V> Default for LockableLruCache<K, V>
+impl<K, V, Time> Default for LockableLruCache<K, V, Time>
 where
     K: Eq + PartialEq + Hash + Clone,
+    Time: TimeProvider + Default + Clone,
 {
     fn default() -> Self {
         Self::new()
@@ -1003,11 +1030,13 @@ where
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks>> for Arc<LockableLruCache<K, V>>
+impl<K, V, Time> Borrow<LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>>>
+    for Arc<LockableLruCache<K, V, Time>>
 where
     K: Eq + PartialEq + Hash + Clone,
+    Time: TimeProvider + Default + Clone,
 {
-    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks> {
+    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, LruCacheHooks<Time>> {
         &self.map_impl
     }
 }
@@ -1021,10 +1050,11 @@ mod tests {
 
     mod lock_entries_unlocked_for_at_least {
         use super::*;
+        use crate::time::MockTime;
 
         #[test]
         fn zero_entries() {
-            let map = LockableLruCache::<i64, String>::new();
+            let map = LockableLruCache::<i64, String, MockTime>::new();
             let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
                 .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
                 .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
@@ -1037,7 +1067,7 @@ mod tests {
 
         #[tokio::test]
         async fn one_entry_too_new() {
-            let map = LockableLruCache::<i64, String>::new();
+            let map = LockableLruCache::<i64, String, MockTime>::new();
             map.async_lock(1, AsyncLimit::no_limit())
                 .await
                 .unwrap()
@@ -1055,13 +1085,13 @@ mod tests {
 
         #[tokio::test]
         async fn one_entry_old_enough() {
-            let map = LockableLruCache::<i64, String>::new();
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
             map.async_lock(1, AsyncLimit::no_limit())
                 .await
                 .unwrap()
                 .insert(String::from("Value 1"));
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
 
             let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
                 .lock_entries_unlocked_for_at_least(Duration::from_millis(500))

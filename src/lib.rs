@@ -12,6 +12,7 @@ mod lockable_map_impl;
 mod lockable_trait;
 mod map_like;
 mod never;
+mod time;
 mod utils;
 
 #[cfg(test)]

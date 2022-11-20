@@ -75,7 +75,7 @@ pub enum AsyncLimit<M, V, H, P, E, F, OnEvictFn>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
     F: Future<Output = Result<(), E>>,
     OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> F,
@@ -147,7 +147,7 @@ impl<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     /// See [AsyncLimit::NoLimit]. This helper function can be used
@@ -227,7 +227,7 @@ pub enum SyncLimit<M, V, H, P, E, OnEvictFn>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
     OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> Result<(), E>,
 {
@@ -290,7 +290,7 @@ impl<M, V, H, P> SyncLimit<M, V, H, P, Never, fn(Vec<Guard<M, V, H, P>>) -> Resu
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     /// See [SyncLimit::NoLimit]. This helper function can be used

@@ -11,13 +11,13 @@ use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
-pub trait FromInto<V> {
-    fn fi_from(v: V) -> Self;
+pub trait FromInto<V, H: Hooks<Self>>: Sized {
+    fn fi_from(v: V, hooks: &H) -> Self;
     fn fi_into(self) -> V;
 }
 
-impl<V> FromInto<V> for V {
-    fn fi_from(v: V) -> V {
+impl<V> FromInto<V, NoopHooks> for V {
+    fn fi_from(v: V, _hooks: &NoopHooks) -> V {
         v
     }
 
@@ -29,7 +29,7 @@ impl<V> FromInto<V> for V {
 pub struct LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     H: Hooks<M::V>,
 {
     // We always use std::sync::Mutex for protecting the whole map since its guards
@@ -57,7 +57,7 @@ where
 impl<M, V> LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, NoopHooks>,
 {
     #[inline]
     pub fn new() -> Self {
@@ -68,7 +68,7 @@ where
 impl<M, V> Default for LockableMapImpl<M, V, NoopHooks>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, NoopHooks>,
 {
     fn default() -> Self {
         Self::new()
@@ -78,7 +78,7 @@ where
 impl<M, V, H> LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     H: Hooks<M::V>,
 {
     #[inline]
@@ -88,6 +88,17 @@ where
             hooks,
             _v: PhantomData,
         }
+    }
+
+    #[inline]
+    pub fn hooks(&self) -> &H {
+        &self.hooks
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub fn hooks_mut(&mut self) -> &mut H {
+        &mut self.hooks
     }
 
     #[inline]
@@ -498,7 +509,7 @@ where
 impl<M, V, H> Debug for LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     H: Hooks<M::V>,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -14,7 +14,7 @@ pub struct Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     map: P,
@@ -29,7 +29,7 @@ impl<M, V, H, P> Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     pub(super) fn new(map: P, key: M::K, guard: OwnedMutexGuard<EntryValue<M::V>>) -> Self {
@@ -232,7 +232,8 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
-        let old_value = self._guard_mut().value.replace(M::V::fi_from(value));
+        let new_value = M::V::fi_from(value, self.map.borrow().hooks());
+        let old_value = self._guard_mut().value.replace(new_value);
         old_value.map(|v| v.fi_into())
     }
 
@@ -266,9 +267,11 @@ where
     /// ```
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
+        let hooks = self.map.borrow().hooks().clone();
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            guard.value = Some(M::V::fi_from(value));
+            let new_value = M::V::fi_from(value, &hooks);
+            guard.value = Some(new_value);
             Ok(&mut *guard
                 .value
                 .as_mut()
@@ -310,9 +313,11 @@ where
     /// ```
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
+        let hooks = self.map.borrow().hooks().clone();
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            guard.value = Some(M::V::fi_from(value_fn()));
+            let new_value = M::V::fi_from(value_fn(), &hooks);
+            guard.value = Some(new_value);
         }
         &mut *guard
             .value
@@ -360,7 +365,7 @@ impl<M, V, H, P> Drop for Guard<M, V, H, P>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn drop(&mut self) {
@@ -377,7 +382,7 @@ where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
     M::K: Debug,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
+    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
     P: Borrow<LockableMapImpl<M, V, H>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
