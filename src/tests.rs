@@ -3,6 +3,7 @@
 // TODO Add a test adding multiple entries and making sure all locking functions can read them
 // TODO Add tests checking that the async_lock, lock_owned, lock methods all block each other. For lock and lock_owned that can probably go into common tests.rs
 // TODO Test `limit` parameter of all locking functions
+//      - and make sure that we also test eviction order
 
 use crate::guard::TryInsertError;
 use crate::lockable_map_impl::LockableMapImpl;
