@@ -345,6 +345,8 @@ where
             })
             // Collecting into a Vec so that we don't have to keep `cache_entries` locked
             // while the returned iterator is alive.
+            // TODO We probably shouldn't do this here since the call site to this in LockableLruCache
+            //      does a take_while and doesn't actually need us to lock all entries
             .collect::<Vec<_>>()
             .into_iter()
     }
