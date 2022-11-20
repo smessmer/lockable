@@ -322,7 +322,6 @@ where
         }
     }
 
-    // TODO Test
     pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Iterator<Item = Guard<M, V, H, S>> {

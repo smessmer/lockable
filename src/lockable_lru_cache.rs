@@ -965,8 +965,6 @@ where
     /// );
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
-    ///
-    /// TODO Test
     pub fn lock_entries_unlocked_for_at_least_owned(
         self: &Arc<Self>,
         duration: Duration,
@@ -1020,4 +1018,61 @@ mod tests {
     use crate::instantiate_lockable_tests;
 
     instantiate_lockable_tests!(LockableLruCache);
+
+    mod lock_entries_unlocked_for_at_least {
+        use super::*;
+
+        #[test]
+        fn zero_entries() {
+            let map = LockableLruCache::<i64, String>::new();
+            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            assert_eq!(
+                Vec::<(i64, String)>::new(),
+                unlocked_for_at_least_half_a_sec
+            );
+        }
+
+        #[tokio::test]
+        async fn one_entry_too_new() {
+            let map = LockableLruCache::<i64, String>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+
+            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            assert_eq!(
+                Vec::<(i64, String)>::new(),
+                unlocked_for_at_least_half_a_sec
+            );
+        }
+
+        #[tokio::test]
+        async fn one_entry_old_enough() {
+            let map = LockableLruCache::<i64, String>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+
+            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![(1, String::from("Value 1"))],
+                unlocked_for_at_least_half_a_sec,
+            );
+        }
+
+        // TODO more tests for lock_entries_unlocked_for_at_least
+    }
 }
