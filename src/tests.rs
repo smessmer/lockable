@@ -729,7 +729,6 @@ macro_rules! instantiate_lockable_tests {
                 std::mem::drop(guard);
 
                 // Check that a child got it
-                thread::sleep(Duration::from_millis(1000));
                 $crate::tests::wait_for_async(|| {
                     child1.entered_lock_section() ^ child2.entered_lock_section()
                 }, Duration::from_secs(1)).await;
