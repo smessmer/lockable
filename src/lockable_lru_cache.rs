@@ -4,6 +4,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
+use std::iter::Rev;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
@@ -25,7 +26,7 @@ where
 {
     type K = K;
     type V = CacheEntry<V>;
-    type ItemIter<'a> = lru::Iter<'a, K, Arc<Mutex<EntryValue<CacheEntry<V>>>>>
+    type ItemIter<'a> = Rev<lru::Iter<'a, K, Arc<Mutex<EntryValue<CacheEntry<V>>>>>>
     where
         K: 'a,
         V: 'a;
@@ -54,7 +55,7 @@ where
     }
 
     fn iter(&self) -> Self::ItemIter<'_> {
-        LruCache::iter(self)
+        LruCache::iter(self).rev()
     }
 }
 
@@ -308,7 +309,7 @@ where
         >,
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(&self.map_impl, key, limit)
     }
@@ -353,7 +354,7 @@ where
         >,
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
     {
         LockableMapImpl::blocking_lock(Arc::clone(self), key, limit)
     }
@@ -405,7 +406,7 @@ where
         >,
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(&self.map_impl, key, limit)
     }
@@ -452,7 +453,7 @@ where
         >,
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
     {
         LockableMapImpl::try_lock(Arc::clone(self), key, limit)
     }
@@ -502,7 +503,7 @@ where
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
     {
         LockableMapImpl::try_lock_async(&self.map_impl, key, limit).await
     }
@@ -555,7 +556,7 @@ where
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
     {
         LockableMapImpl::try_lock_async(Arc::clone(self), key, limit).await
     }
@@ -606,7 +607,7 @@ where
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> F,
     {
         LockableMapImpl::async_lock(&self.map_impl, key, limit).await
     }
@@ -656,7 +657,7 @@ where
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> F,
     {
         LockableMapImpl::async_lock(Arc::clone(self), key, limit).await
     }

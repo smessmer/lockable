@@ -111,7 +111,7 @@ where
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> F,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
         let mut cache_entries = match limit {
@@ -121,7 +121,7 @@ where
             }
             AsyncLimit::SoftLimit {
                 max_entries,
-                on_evict,
+                mut on_evict,
             } => {
                 // free up space for the new entry if necessary
                 loop {
@@ -177,7 +177,7 @@ where
     ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
         let mut cache_entries = match limit {
@@ -187,7 +187,7 @@ where
             }
             SyncLimit::SoftLimit {
                 max_entries,
-                on_evict,
+                mut on_evict,
             } => {
                 // free up space for the new entry if necessary
                 loop {
@@ -251,7 +251,7 @@ where
     ) -> Result<Guard<M, V, H, S>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -271,7 +271,7 @@ where
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -289,7 +289,7 @@ where
     ) -> Result<Option<Guard<M, V, H, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -310,7 +310,7 @@ where
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: Fn(Vec<Guard<M, V, H, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.

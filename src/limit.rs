@@ -9,8 +9,6 @@ use crate::lockable_map_impl::{FromInto, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
 use crate::never::Never;
 
-// TODO Add examples to documentation
-
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
 /// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
 ///
@@ -23,6 +21,56 @@ use crate::never::Never;
 ///
 /// The purpose of this class is the same as the purpose of [SyncLimit], but it has an `async` callback
 /// to evict entries instead of a synchronous callback.
+///
+/// # Example (without limit)
+/// ```
+/// use lockable::{LockableHashMap, AsyncLimit};
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let lockable_map = LockableHashMap::<i64, String>::new();
+/// let guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
+/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// ```
+///
+/// # Example (with limit)
+#[cfg_attr(feature = "lru", doc = "```")]
+#[cfg_attr(not(feature = "lru"), doc = "```ignore")]
+/// use lockable::{LockableLruCache, AsyncLimit};
+/// use std::cell::RefCell;
+/// use std::rc::Rc;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+///
+/// let lockable_map = LockableLruCache::<i64, String>::new();
+/// // Insert two entries
+/// lockable_map.async_lock(4, AsyncLimit::no_limit()).await?.insert("Value 4".to_string());
+/// lockable_map.async_lock(5, AsyncLimit::no_limit()).await?.insert("Value 5".to_string());
+///
+/// // Lock a third entry but set a limit of 2 entries
+/// // Collect any evicted entries in the `evicted` vector
+/// let evicted = Rc::new(RefCell::new(vec![]));
+/// let guard = lockable_map.async_lock(4, AsyncLimit::SoftLimit {
+///   max_entries: 2.try_into().unwrap(),
+///   on_evict: |entries| {
+///     let evicted = Rc::clone(&evicted);
+///     async move {
+///       for mut entry in entries {
+///         evicted.borrow_mut().push(*entry.key());
+///         // We have to remove the entry from the map, the map doesn't do it for us.
+///         // If we don't remove it, we could end up in an infinite loop because the
+///         // map is still above the limit.
+///         entry.remove();
+///       }
+///       Ok::<(), lockable::Never>(())
+///     }
+///   }
+/// }).await?;
+///
+/// // We evicted the entry with key 4 because it was the least recently used
+/// assert_eq!(evicted.borrow().len(), 1);
+/// assert!(evicted.borrow().contains(&4));
+/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// ```
 pub enum AsyncLimit<M, V, H, P, E, F, OnEvictFn>
 where
     M: ArcMutexMapLike,
@@ -30,7 +78,7 @@ where
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
     F: Future<Output = Result<(), E>>,
-    OnEvictFn: Fn(Vec<Guard<M, V, H, P>>) -> F,
+    OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> F,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -128,13 +176,60 @@ where
 ///
 /// The purpose of this class is the same as the purpose of [AsyncLimit], but it has a synchronous callback
 /// to evict entries instead of an `async` callback.
+///
+/// # Example (without limit)
+/// ```
+/// use lockable::{LockableHashMap, SyncLimit};
+///
+/// # (|| {
+/// let lockable_map = LockableHashMap::<i64, String>::new();
+/// let guard = lockable_map.blocking_lock(4, SyncLimit::no_limit())?;
+/// # Ok::<(), lockable::Never>(())})().unwrap();
+/// ```
+///
+/// # Example (with limit)
+#[cfg_attr(feature = "lru", doc = "```")]
+#[cfg_attr(not(feature = "lru"), doc = "```ignore")]
+/// use lockable::{LockableLruCache, SyncLimit};
+/// use std::cell::RefCell;
+/// use std::rc::Rc;
+///
+/// # (|| {
+/// let lockable_map = LockableLruCache::<i64, String>::new();
+///
+/// // Insert two entries
+/// lockable_map.blocking_lock(4, SyncLimit::no_limit())?.insert("Value 4".to_string());
+/// lockable_map.blocking_lock(5, SyncLimit::no_limit())?.insert("Value 5".to_string());
+///
+/// // Lock a third entry but set a limit of 2 entries
+/// // Collect any evicted entries in the `evicted` vector
+/// let mut evicted = vec![];
+/// let guard = lockable_map.blocking_lock(4, SyncLimit::SoftLimit {
+///   max_entries: 2.try_into().unwrap(),
+///   on_evict: |entries| {
+///     for mut entry in entries {
+///       evicted.push(*entry.key());
+///       // We have to remove the entry from the map, the map doesn't do it for us.
+///       // If we don't remove it, we could end up in an infinite loop because the
+///       // map is still above the limit.
+///       entry.remove();
+///     }
+///     Ok::<(), lockable::Never>(())
+///   }
+/// })?;
+///
+/// // We evicted the entry with key 4 because it was the least recently used
+/// assert_eq!(evicted.len(), 1);
+/// assert!(evicted.contains(&4));
+/// # Ok::<(), lockable::Never>(())})().unwrap();
+/// ```
 pub enum SyncLimit<M, V, H, P, E, OnEvictFn>
 where
     M: ArcMutexMapLike,
     H: Hooks<M::V>,
     M::V: Borrow<V> + BorrowMut<V> + FromInto<V>,
     P: Borrow<LockableMapImpl<M, V, H>>,
-    OnEvictFn: Fn(Vec<Guard<M, V, H, P>>) -> Result<(), E>,
+    OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> Result<(), E>,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
