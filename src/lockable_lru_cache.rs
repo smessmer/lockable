@@ -1000,9 +1000,8 @@ where
         now: Instant,
         duration: Duration,
     ) -> impl Iterator<Item = Guard<MapImpl<K, V>, V, LruCacheHooks<Time>, S>> {
-        // TODO Since entries should be LRU ordered, we don't need to iterate over all of them, just until one is new enough.
         let cutoff = now - duration;
-        LockableMapImpl::lock_all_unlocked(this).filter(move |entry| {
+        LockableMapImpl::lock_all_unlocked(this).take_while(move |entry| {
             if let Some(entry) = entry.value_raw() {
                 entry.last_unlocked <= cutoff
             } else {
@@ -1055,32 +1054,26 @@ mod tests {
         #[test]
         fn zero_entries() {
             let map = LockableLruCache::<i64, String, MockTime>::new();
-            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+            let old_enough: Vec<(i64, String)> = map
                 .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
                 .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
                 .collect();
-            assert_eq!(
-                Vec::<(i64, String)>::new(),
-                unlocked_for_at_least_half_a_sec
-            );
+            assert_eq!(Vec::<(i64, String)>::new(), old_enough);
         }
 
         #[tokio::test]
-        async fn one_entry_too_new() {
+        async fn one_entry_not_old_enough() {
             let map = LockableLruCache::<i64, String, MockTime>::new();
             map.async_lock(1, AsyncLimit::no_limit())
                 .await
                 .unwrap()
                 .insert(String::from("Value 1"));
 
-            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+            let old_enough: Vec<(i64, String)> = map
                 .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
                 .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
                 .collect();
-            assert_eq!(
-                Vec::<(i64, String)>::new(),
-                unlocked_for_at_least_half_a_sec
-            );
+            assert_eq!(Vec::<(i64, String)>::new(), old_enough);
         }
 
         #[tokio::test]
@@ -1093,16 +1086,279 @@ mod tests {
 
             map.time_provider_mut().advance_time(Duration::from_secs(1));
 
-            let unlocked_for_at_least_half_a_sec: Vec<(i64, String)> = map
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(vec![(1, String::from("Value 1"))], old_enough);
+        }
+
+        #[tokio::test]
+        async fn two_entries_zero_old_enough() {
+            let map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            assert_eq!(Vec::<(i64, String)>::new(), old_enough);
+        }
+
+        #[tokio::test]
+        async fn two_entries_one_old_enough() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(vec![(1, String::from("Value 1"))], old_enough);
+        }
+
+        #[tokio::test]
+        async fn two_entries_both_old_enough() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+
+            let old_enough: Vec<(i64, String)> = map
                 .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
                 .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
                 .collect();
             crate::tests::assert_vec_eq_unordered(
-                vec![(1, String::from("Value 1"))],
-                unlocked_for_at_least_half_a_sec,
+                vec![(1, String::from("Value 1")), (2, String::from("Value 2"))],
+                old_enough,
             );
         }
 
-        // TODO more tests for lock_entries_unlocked_for_at_least
+        #[tokio::test]
+        async fn three_entries_zero_old_enough() {
+            let map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            assert_eq!(Vec::<(i64, String)>::new(), old_enough);
+        }
+
+        #[tokio::test]
+        async fn three_entries_one_old_enough() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(vec![(1, String::from("Value 1"))], old_enough);
+        }
+
+        #[tokio::test]
+        async fn three_entries_two_old_enough() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![(1, String::from("Value 1")), (2, String::from("Value 2"))],
+                old_enough,
+            );
+        }
+
+        #[tokio::test]
+        async fn three_entries_three_old_enough() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![
+                    (1, String::from("Value 1")),
+                    (2, String::from("Value 2")),
+                    (3, String::from("Value 3")),
+                ],
+                old_enough,
+            );
+        }
+
+        #[tokio::test]
+        async fn locking_an_entry_makes_it_not_old_enough_anymore_1() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+
+            let guard = map.async_lock(1, AsyncLimit::no_limit()).await.unwrap();
+            std::mem::drop(guard);
+
+            map.time_provider_mut()
+                .advance_time(Duration::from_millis(100));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![(2, String::from("Value 2")), (3, String::from("Value 3"))],
+                old_enough,
+            );
+        }
+
+        #[tokio::test]
+        async fn locking_an_entry_makes_it_not_old_enough_anymore_2() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+
+            let guard = map.async_lock(2, AsyncLimit::no_limit()).await.unwrap();
+            std::mem::drop(guard);
+
+            map.time_provider_mut()
+                .advance_time(Duration::from_millis(100));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![(1, String::from("Value 1")), (3, String::from("Value 3"))],
+                old_enough,
+            );
+        }
+
+        #[tokio::test]
+        async fn locking_an_entry_makes_it_not_old_enough_anymore_3() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+            map.async_lock(3, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 3"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+
+            let guard = map.async_lock(3, AsyncLimit::no_limit()).await.unwrap();
+            std::mem::drop(guard);
+
+            map.time_provider_mut()
+                .advance_time(Duration::from_millis(100));
+
+            let old_enough: Vec<(i64, String)> = map
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(
+                vec![(1, String::from("Value 1")), (2, String::from("Value 2"))],
+                old_enough,
+            );
+        }
     }
+
+    // TODO Copy all lock_entries_unlocked_for_at_least tests to lock_entries_unlocked_for_at_least_owned
 }
