@@ -20,11 +20,9 @@ all-features = true
 futures = "^0.3.25"
 lru = {version = "^0.8.1", optional = true}
 thiserror = "^1.0.37"
-# TODO tokio master branch needed for Mutex::blocking_lock_owned. Once any version after v1.21.2 is released, we can probably switch to that new version instead.
-tokio = {git = "https://github.com/tokio-rs/tokio", rev = "01f019397182097c955bae5358034bb9763ba964", features = ["sync", "time"]}
+tokio = {version = "^1.22.0", features = ["sync", "time"]}
 derive_more = "^0.99.17"
 
 [dev-dependencies]
-# TODO tokio master branch needed for Mutex::blocking_lock_owned. Once any version after v1.21.2 is released, we can probably switch to that new version instead.
-tokio = {git = "https://github.com/tokio-rs/tokio", rev = "01f019397182097c955bae5358034bb9763ba964", features = ["sync", "time", "macros", "rt-multi-thread"]}
+tokio = {version = "^1.22.0", features = ["sync", "time", "macros", "rt-multi-thread"]}
 async-trait = "^0.1.58"

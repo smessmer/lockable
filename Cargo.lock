@@ -306,8 +306,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.21.2"
-source = "git+https://github.com/tokio-rs/tokio?rev=01f019397182097c955bae5358034bb9763ba964#01f019397182097c955bae5358034bb9763ba964"
+version = "1.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d76ce4a75fb488c605c54bf610f221cea8b0dafb53333c1a67e8ee199dcd2ae3"
 dependencies = [
  "autocfg",
  "num_cpus",
@@ -318,7 +319,8 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "1.8.0"
-source = "git+https://github.com/tokio-rs/tokio?rev=01f019397182097c955bae5358034bb9763ba964#01f019397182097c955bae5358034bb9763ba964"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9724f9a975fb987ef7a3cd9be0350edcbe130698af5b8f7a631e23d42d052484"
 dependencies = [
  "proc-macro2",
  "quote",
