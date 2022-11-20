@@ -136,24 +136,46 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 /// use lockable::{AsyncLimit, LockableLruCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<(), lockable::Never> {
+/// async fn insert_entry(
+///     lockable_cache: &LockableLruCache<i64, String>,
+/// ) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
 ///     Ok(())
 /// }
 ///
-/// async fn remove_entry(lockable_cache: &LockableLruCache<i64, String>) -> Result<(), lockable::Never> {
+/// async fn remove_entry(
+///     lockable_cache: &LockableLruCache<i64, String>,
+/// ) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
 ///     Ok(())
 /// }
 ///
 /// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
-/// assert_eq!(None, lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     None,
+///     lockable_cache
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// insert_entry(&lockable_cache).await;
-/// assert_eq!(Some(&String::from("Hello World")), lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     Some(&String::from("Hello World")),
+///     lockable_cache
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// remove_entry(&lockable_cache).await;
-/// assert_eq!(None, lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     None,
+///     lockable_cache
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
@@ -168,7 +190,9 @@ impl<V> Hooks<CacheEntry<V>> for LruCacheHooks {
 ///
 /// let lockable_cache: LockableLruCache<CustomLockKey, String> = LockableLruCache::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = lockable_cache.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
+/// let guard = lockable_cache
+///     .async_lock(CustomLockKey(4), AsyncLimit::no_limit())
+///     .await?;
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
@@ -228,7 +252,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
@@ -280,7 +304,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{SyncLimit, LockableLruCache};
+    /// use lockable::{LockableLruCache, SyncLimit};
     ///
     /// # (||{
     /// let lockable_cache = LockableLruCache::<i64, String>::new();
@@ -324,7 +348,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{SyncLimit, LockableLruCache};
+    /// use lockable::{LockableLruCache, SyncLimit};
     /// use std::sync::Arc;
     ///
     /// # (||{
@@ -375,7 +399,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{SyncLimit, LockableLruCache};
+    /// use lockable::{LockableLruCache, SyncLimit};
     ///
     /// # (||{
     /// let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
@@ -421,7 +445,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{SyncLimit, LockableLruCache};
+    /// use lockable::{LockableLruCache, SyncLimit};
     /// use std::sync::Arc;
     ///
     /// # (||{
@@ -469,7 +493,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -478,12 +502,16 @@ where
     /// let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = lockable_cache.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_cache
+    ///     .try_lock_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_cache.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_cache
+    ///     .try_lock_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
@@ -522,7 +550,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -531,12 +559,16 @@ where
     /// let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = lockable_cache.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_cache
+    ///     .try_lock_owned_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_cache.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_cache
+    ///     .try_lock_owned_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
@@ -576,7 +608,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
@@ -625,20 +657,26 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = Arc::new(LockableLruCache::<i64, String>::new());
-    /// let guard1 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
-    /// let guard2 = lockable_map.async_lock_owned(5, AsyncLimit::no_limit()).await?;
+    /// let guard1 = lockable_map
+    ///     .async_lock_owned(4, AsyncLimit::no_limit())
+    ///     .await?;
+    /// let guard2 = lockable_map
+    ///     .async_lock_owned(5, AsyncLimit::no_limit())
+    ///     .await?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
     /// // let guard3 = lockable_map.async_lock_owned(4).await?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .async_lock_owned(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
@@ -667,7 +705,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
@@ -682,9 +720,7 @@ where
     ///     .await?
     ///     .insert(String::from("Value 5"));
     ///
-    /// let entries: Vec<(i64, String)> = lockable_map
-    ///     .into_entries_unordered()
-    ///     .collect();
+    /// let entries: Vec<(i64, String)> = lockable_map.into_entries_unordered().collect();
     ///
     /// // `entries` now contains both entries, but in an arbitrary order
     /// assert_eq!(2, entries.len());
@@ -708,7 +744,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
@@ -756,8 +792,8 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
     /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, LockableLruCache};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
@@ -803,8 +839,8 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
     /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, LockableLruCache};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -845,15 +881,19 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
-    /// use tokio::time::{Duration, self};
+    /// use lockable::{AsyncLimit, LockableLruCache};
+    /// use tokio::time::{self, Duration};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableLruCache::<i64, String>::new();
-    /// lockable_map.async_lock(1, AsyncLimit::no_limit())
-    ///     .await?.insert(String::from("Value 1"));
-    /// lockable_map.async_lock(2, AsyncLimit::no_limit())
-    ///     .await?.insert(String::from("Value 2"));
+    /// lockable_map
+    ///     .async_lock(1, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 1"));
+    /// lockable_map
+    ///     .async_lock(2, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 2"));
     ///
     /// time::sleep(Duration::from_secs(1)).await;
     ///
@@ -866,7 +906,10 @@ where
     ///     .lock_entries_unlocked_for_at_least(Duration::from_millis(500))
     ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
     ///     .collect();
-    /// assert_eq!(vec![(2, String::from("Value 2"))], unlocked_for_at_least_half_a_sec);
+    /// assert_eq!(
+    ///     vec![(2, String::from("Value 2"))],
+    ///     unlocked_for_at_least_half_a_sec
+    /// );
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     ///
@@ -890,16 +933,20 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableLruCache, AsyncLimit};
-    /// use tokio::time::{Duration, self};
+    /// use lockable::{AsyncLimit, LockableLruCache};
     /// use std::sync::Arc;
+    /// use tokio::time::{self, Duration};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = Arc::new(LockableLruCache::<i64, String>::new());
-    /// lockable_map.async_lock(1, AsyncLimit::no_limit())
-    ///     .await?.insert(String::from("Value 1"));
-    /// lockable_map.async_lock(2, AsyncLimit::no_limit())
-    ///     .await?.insert(String::from("Value 2"));
+    /// lockable_map
+    ///     .async_lock(1, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 1"));
+    /// lockable_map
+    ///     .async_lock(2, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 2"));
     ///
     /// time::sleep(Duration::from_secs(1)).await;
     ///
@@ -912,7 +959,10 @@ where
     ///     .lock_entries_unlocked_for_at_least_owned(Duration::from_millis(500))
     ///     .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
     ///     .collect();
-    /// assert_eq!(vec![(2, String::from("Value 2"))], unlocked_for_at_least_half_a_sec);
+    /// assert_eq!(
+    ///     vec![(2, String::from("Value 2"))],
+    ///     unlocked_for_at_least_half_a_sec
+    /// );
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     ///

@@ -84,24 +84,46 @@ where
 /// use lockable::{AsyncLimit, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// async fn insert_entry(lockable_map: &LockableHashMap<i64, String>) -> Result<(), lockable::Never> {
+/// async fn insert_entry(
+///     lockable_map: &LockableHashMap<i64, String>,
+/// ) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.insert(String::from("Hello World"));
 ///     Ok(())
 /// }
 ///
-/// async fn remove_entry(lockable_map: &LockableHashMap<i64, String>) -> Result<(), lockable::Never> {
+/// async fn remove_entry(
+///     lockable_map: &LockableHashMap<i64, String>,
+/// ) -> Result<(), lockable::Never> {
 ///     let mut entry_guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
 ///     entry_guard.remove();
 ///     Ok(())
 /// }
 ///
 /// let lockable_map: LockableHashMap<i64, String> = LockableHashMap::new();
-/// assert_eq!(None, lockable_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     None,
+///     lockable_map
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// insert_entry(&lockable_map).await;
-/// assert_eq!(Some(&String::from("Hello World")), lockable_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     Some(&String::from("Hello World")),
+///     lockable_map
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// remove_entry(&lockable_map).await;
-/// assert_eq!(None, lockable_map.async_lock(4, AsyncLimit::no_limit()).await?.value());
+/// assert_eq!(
+///     None,
+///     lockable_map
+///         .async_lock(4, AsyncLimit::no_limit())
+///         .await?
+///         .value()
+/// );
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
@@ -116,7 +138,9 @@ where
 ///
 /// let lockable_map: LockableHashMap<CustomLockKey, String> = LockableHashMap::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let guard = lockable_map.async_lock(CustomLockKey(4), AsyncLimit::no_limit()).await?;
+/// let guard = lockable_map
+///     .async_lock(CustomLockKey(4), AsyncLimit::no_limit())
+///     .await?;
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
@@ -176,7 +200,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -403,7 +427,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -412,12 +436,16 @@ where
     /// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = lockable_map.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .try_lock_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_map.try_lock_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .try_lock_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
@@ -456,7 +484,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -465,12 +493,16 @@ where
     /// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit()).await?;
     ///
     /// // This next line cannot acquire the lock because `4` is already locked on this thread
-    /// let guard3 = lockable_map.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .try_lock_owned_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_none());
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_map.try_lock_owned_async(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .try_lock_owned_async(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// assert!(guard3.is_some());
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
@@ -502,7 +534,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -551,20 +583,26 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
-    /// let guard1 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
-    /// let guard2 = lockable_map.async_lock_owned(5, AsyncLimit::no_limit()).await?;
+    /// let guard1 = lockable_map
+    ///     .async_lock_owned(4, AsyncLimit::no_limit())
+    ///     .await?;
+    /// let guard2 = lockable_map
+    ///     .async_lock_owned(5, AsyncLimit::no_limit())
+    ///     .await?;
     ///
     /// // This next line would cause a deadlock or panic because `4` is already locked on this thread
     /// // let guard3 = lockable_map.async_lock_owned(4).await?;
     ///
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
-    /// let guard3 = lockable_map.async_lock_owned(4, AsyncLimit::no_limit()).await?;
+    /// let guard3 = lockable_map
+    ///     .async_lock_owned(4, AsyncLimit::no_limit())
+    ///     .await?;
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
@@ -585,7 +623,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -600,9 +638,7 @@ where
     ///     .await?
     ///     .insert(String::from("Value 5"));
     ///
-    /// let entries: Vec<(i64, String)> = lockable_map
-    ///     .into_entries_unordered()
-    ///     .collect();
+    /// let entries: Vec<(i64, String)> = lockable_map.into_entries_unordered().collect();
     ///
     /// // `entries` now contains both entries, but in an arbitrary order
     /// assert_eq!(2, entries.len());
@@ -624,7 +660,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
+    /// use lockable::{AsyncLimit, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -672,8 +708,8 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
     /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -719,8 +755,8 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{LockableHashMap, AsyncLimit};
     /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, LockableHashMap};
     /// use std::sync::Arc;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {

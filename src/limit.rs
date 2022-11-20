@@ -24,7 +24,7 @@ use crate::never::Never;
 ///
 /// # Example (without limit)
 /// ```
-/// use lockable::{LockableHashMap, AsyncLimit};
+/// use lockable::{AsyncLimit, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let lockable_map = LockableHashMap::<i64, String>::new();
