@@ -10,6 +10,7 @@ use super::guard::Guard;
 use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
+use super::utils::take_while_inclusive::TakeWhileInclusiveIterExt;
 
 pub trait FromInto<V, H: Hooks<Self>>: Sized {
     fn fi_from(v: V, hooks: &H) -> Self;
@@ -335,20 +336,38 @@ where
 
     pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(
         this: S,
-    ) -> impl Iterator<Item = Guard<M, V, H, S>> {
+        take_while_condition: &impl Fn(&Guard<M, V, H, S>) -> bool,
+    ) -> Vec<Guard<M, V, H, S>> {
         let cache_entries = this.borrow()._cache_entries();
-        cache_entries
+        let mut entries = cache_entries
             .iter()
             .filter_map(|(key, mutex)| match Arc::clone(mutex).try_lock_owned() {
                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                 Err(_) => None,
             })
+            .take_while_inclusive(take_while_condition)
             // Collecting into a Vec so that we don't have to keep `cache_entries` locked
             // while the returned iterator is alive.
-            // TODO We probably shouldn't do this here since the call site to this in LockableLruCache
-            //      does a take_while and doesn't actually need us to lock all entries
-            .collect::<Vec<_>>()
-            .into_iter()
+            .collect::<Vec<_>>();
+
+        // We now have all entries fulfilling the `take_while_condition` plus one entry that probably does not
+        // (however, it might fulfill the condition if all entries fulfill it).
+        // We need to remove that last entry and drop it, but before we can do that, we need to drop
+        // `cache_entries` because otherwise we'd have a deadlock when the entry tries to unlock itself.
+        // This whole issue is actually the reason why we used `take_while_inclusive` instead of just
+        // `take_while` above. `take_while` would drop this entry while the stream is being processed
+        // and cause this very deadlock.
+
+        std::mem::drop(cache_entries);
+        if let Some(last_entry) = entries.last() {
+            if !take_while_condition(last_entry) {
+                std::mem::drop(entries.pop().expect(
+                    "In this code branch, we already verified that there is a last entry.",
+                ));
+            }
+        }
+
+        entries
     }
 
     /// Locks all entries in the cache and returns their guards as a stream.

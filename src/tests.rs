@@ -133,7 +133,7 @@ macro_rules! instantiate_lockable_tests {
         use std::thread::{self, JoinHandle};
         use std::time::{Duration, Instant};
         use futures::{stream::StreamExt};
-        use $crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard, utils::MyStreamExt};
+        use $crate::{Lockable, InfallibleUnwrap, TryInsertError, tests::Guard, utils::stream::MyStreamExt};
 
         /// A trait that allows our test cases to abstract over different sync locking methods
         /// (i.e. blocking_lock, blocking_lock_owned, try_lock, try_lock_owned)

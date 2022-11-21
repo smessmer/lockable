@@ -18,6 +18,7 @@ impl Default for RealTime {
 }
 
 #[cfg(test)]
+#[cfg(feature = "lru")]
 mod mock_time {
     use super::*;
     use std::sync::{Arc, Mutex};
@@ -46,4 +47,5 @@ mod mock_time {
     }
 }
 #[cfg(test)]
+#[cfg(feature = "lru")]
 pub use mock_time::MockTime;

@@ -1001,13 +1001,10 @@ where
         duration: Duration,
     ) -> impl Iterator<Item = Guard<MapImpl<K, V>, V, LruCacheHooks<Time>, S>> {
         let cutoff = now - duration;
-        LockableMapImpl::lock_all_unlocked(this).take_while(move |entry| {
-            if let Some(entry) = entry.value_raw() {
-                entry.last_unlocked <= cutoff
-            } else {
-                false
-            }
-        })
+        LockableMapImpl::lock_all_unlocked(this, &move |entry| {
+            let entry = entry.value_raw().expect("There must be a value, otherwise it cannot exist in the map as an 'unlocked' entry");
+            entry.last_unlocked <= cutoff
+        }).into_iter()
     }
 
     #[cfg(test)]
@@ -1359,6 +1356,8 @@ mod tests {
             );
         }
     }
+
+    // TODO Add tests where some entries are locked, both for new enough and for too old entries
 
     // TODO Copy all lock_entries_unlocked_for_at_least tests to lock_entries_unlocked_for_at_least_owned
 }
