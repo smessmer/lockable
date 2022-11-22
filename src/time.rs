@@ -29,7 +29,7 @@ mod mock_time {
         now: Arc<Mutex<Instant>>,
     }
     impl MockTime {
-        pub fn advance_time(&mut self, delta: Duration) {
+        pub fn advance_time(&self, delta: Duration) {
             *self.now.lock().unwrap() += delta;
         }
     }
