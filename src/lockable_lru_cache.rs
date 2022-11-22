@@ -925,9 +925,6 @@ where
     /// );
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
-    ///
-    /// TODO Test whether the returned iterator keeps a lock on the whole map and if yes,
-    ///      try to fix that or at least document it.
     pub fn lock_entries_unlocked_for_at_least(
         &self,
         duration: Duration,
@@ -1355,9 +1352,38 @@ mod tests {
                 old_enough,
             );
         }
-    }
 
-    // TODO Add tests where some entries are locked, both for new enough and for too old entries
+        // TODO Add tests where some entries are locked, both for new enough and for too old entries
+
+        #[tokio::test]
+        async fn can_lock_other_elements_while_iterator_is_running() {
+            let mut map = LockableLruCache::<i64, String, MockTime>::new();
+            map.async_lock(1, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 1"));
+            map.time_provider_mut().advance_time(Duration::from_secs(1));
+            map.async_lock(2, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(String::from("Value 2"));
+
+            map.time_provider_mut()
+                .advance_time(Duration::from_millis(100));
+
+            let old_enough_iterator =
+                map.lock_entries_unlocked_for_at_least(Duration::from_millis(500));
+
+            // Locking another entry should work and not interfere with the iterator
+            let guard = map.async_lock(2, AsyncLimit::no_limit()).await.unwrap();
+            std::mem::drop(guard);
+
+            let old_enough: Vec<(i64, String)> = old_enough_iterator
+                .map(|guard| (*guard.key(), guard.value().cloned().unwrap()))
+                .collect();
+            crate::tests::assert_vec_eq_unordered(vec![(1, String::from("Value 1"))], old_enough);
+        }
+    }
 
     // TODO Copy all lock_entries_unlocked_for_at_least tests to lock_entries_unlocked_for_at_least_owned
 }
