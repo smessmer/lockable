@@ -1,5 +1,6 @@
 //! The [lockable](https://crates.io/crates/lockable) library offers thread-safe
-//! HashMap (see [struct@LockableHashMap]) and LruCache (see [struct@LockableLruCache])
+//! HashMap (see [LockableHashMap](crate::lockable_hash_map::LockableHashMap))
+//! and LruCache (see [LockableLruCache](crate::lockable_lru_cache::LockableLruCache))
 //! types where individual keys can be locked/unlocked, even if there is no entry
 //! for this key in the map.
 //!
@@ -42,8 +43,8 @@
 //! ```
 //!
 //! ## Lockpool example
-//! This example builds a simple lock pool using the [struct@LockableHashMap] data
-//! structure. A lock pool is a pool of keyable locks. In this example, the entries
+//! This example builds a simple lock pool using the [LockableHashMap](crate::lockable_hash_map::LockableHashMap)
+//! data structure. A lock pool is a pool of keyable locks. In this example, the entries
 //! don't have a value assigned to them and the lock pool is only used to synchronize
 //! access to some keyed resource.
 //! ```
@@ -70,8 +71,8 @@
 //! ```
 //!
 //! ## Crate Features
-//! - `lru`: Enables the [struct@LockableLruCache] type which adds a dependency
-//!    on the [lru](https://crates.io/crates/lru) crate.
+//! - `lru`: Enables the [LockableLruCache](crate::lockable_lru_cache::LockableLruCache)
+//!    type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
 
 // TODO Figure out which functions actually should or shouldn't be #[inline]
 // TODO Add benchmarks, maybe take the one from the `lockpool` crate.

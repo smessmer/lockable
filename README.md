@@ -11,7 +11,8 @@
 <!-- cargo-rdme start -->
 
 The [lockable](https://crates.io/crates/lockable) library offers thread-safe
-HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/struct.LockableHashMap.html)) and LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/struct.LockableLruCache.html))
+HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html))
+and LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html))
 types where individual keys can be locked/unlocked, even if there is no entry
 for this key in the map.
 
@@ -47,8 +48,8 @@ let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
 ```
 
 ### Lockpool example
-This example builds a simple lock pool using the [LockableHashMap](https://docs.rs/lockable/latest/lockable/struct.LockableHashMap.html) data
-structure. A lock pool is a pool of keyable locks. In this example, the entries
+This example builds a simple lock pool using the [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html)
+data structure. A lock pool is a pool of keyable locks. In this example, the entries
 don't have a value assigned to them and the lock pool is only used to synchronize
 access to some keyed resource.
 ```rust
@@ -73,8 +74,8 @@ let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
 ```
 
 ### Crate Features
-- `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/struct.LockableLruCache.html) type which adds a dependency
-   on the [lru](https://crates.io/crates/lru) crate.
+- `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html)
+   type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
 
 <!-- cargo-rdme end -->
 
