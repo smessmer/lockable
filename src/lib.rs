@@ -1,4 +1,26 @@
-//! TODO Crate level documentation
+//! The [lockable](https://crates.io/crates/lockable) library offers thread-safe
+//! HashMap (see [LockableHashMap]) and LruCache (see [LockableLruCache]) types
+//! where individual keys can be locked/unlocked, even if there is no entry for
+//! this key in the map. This is great for synchronizing access to an underlying
+//! key-value store or for building cache data structures on top of such
+//! key-value stores.
+//!
+//! ```
+//! use lockable::{AsyncLimit, LockableLruCache};
+//!
+//! let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! let entry1 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+//! let entry2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
+//!
+//! // This next line would cause a deadlock or panic because `4` is already locked on this thread
+//! // let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+//!
+//! // After dropping the corresponding guard, we can lock it again
+//! std::mem::drop(entry1);
+//! let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+//! # Ok::<(), lockable::Never>(())}).unwrap();
+//! ```
 
 // TODO Figure out which functions actually should or shouldn't be #[inline]
 
