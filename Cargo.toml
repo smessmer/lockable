@@ -16,6 +16,9 @@ version = "0.0.3"
 [package.metadata.docs.rs]
 all-features = true
 
+[features]
+default = ["lru"]
+
 [dependencies]
 futures = "^0.3.25"
 lru = {version = "^0.8.1", optional = true}
