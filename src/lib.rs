@@ -9,7 +9,8 @@
 //! ## LRU cache example
 //! This example builds a simple LRU cache and locks some entries.
 //!
-//! ```
+#![cfg_attr(feature = "lru", doc = "```")]
+#![cfg_attr(not(feature = "lru"), doc = "```ignore")]
 //! use lockable::{AsyncLimit, LockableLruCache};
 //!
 //! let lockable_cache = LockableLruCache::<i64, String>::new();
