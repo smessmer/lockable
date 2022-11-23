@@ -49,7 +49,7 @@ let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
 ```
 
 ### Lockpool example
-This example builds a simple lock pool using the [LockPook](https://docs.rs/lockable/latest/lockable/lockpool/struct.LockPool.html)
+This example builds a simple lock pool using the [LockPool](https://docs.rs/lockable/latest/lockable/lockpool/struct.LockPool.html)
 data structure. A lock pool is a pool of keyable locks. This can be used if
 you don't need a cache but just some way to synchronize access to an underlying
 resource.

@@ -44,7 +44,7 @@
 //! ```
 //!
 //! ## Lockpool example
-//! This example builds a simple lock pool using the [LockPook](crate::lockpool::LockPool)
+//! This example builds a simple lock pool using the [LockPool](crate::lockpool::LockPool)
 //! data structure. A lock pool is a pool of keyable locks. This can be used if
 //! you don't need a cache but just some way to synchronize access to an underlying
 //! resource.
