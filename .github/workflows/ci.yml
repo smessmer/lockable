@@ -17,8 +17,7 @@ jobs:
         command: ["build", "test"]
         profile: ["", "--release"]
         features: ["", "--no-default-features", "--all-features"]
-        # TODO Add msrv
-        toolchain: ["stable", "nightly"]
+        toolchain: ["stable", "nightly", "1.65"]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
@@ -40,8 +39,7 @@ jobs:
         command: ["build", "test"]
         profile: ["", "--release"]
         features: ["", "--no-default-features", "--all-features"]
-        # TODO Add msrv
-        toolchain: ["stable", "nightly"]
+        toolchain: ["stable", "nightly", "1.65"]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
