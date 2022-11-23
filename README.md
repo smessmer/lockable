@@ -70,6 +70,35 @@ std::mem::drop(guard1);
 let guard3 = lockpool.async_lock(4).await;
 ```
 
+### HashMap example
+If you need a lockable key-value store but don't need the LRU ordering,
+you can use [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html).
+```rust
+use lockable::{AsyncLimit, LockableHashMap};
+
+let lockable_map = LockableHashMap::<i64, String>::new();
+
+// Insert an entry
+lockable_map.async_lock(4, AsyncLimit::no_limit())
+    .await?
+    .insert(String::from("Value"));
+
+// Hold a lock on a different entry
+let guard = lockable_map.async_lock(5, AsyncLimit::no_limit())
+    .await?;
+
+// This next line would wait until the lock gets released,
+// which in this case would cause a deadlock because we're
+// on the same thread
+// let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit())
+//    .await?;
+
+// After dropping the corresponding guard, we can lock it again
+std::mem::drop(guard);
+let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit())
+    .await?;
+```
+
 ### Crate Features
 - `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html)
    type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.

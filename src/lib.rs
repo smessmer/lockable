@@ -67,6 +67,37 @@
 //! # Ok::<(), lockable::Never>(())}).unwrap();
 //! ```
 //!
+//! ## HashMap example
+//! If you need a lockable key-value store but don't need the LRU ordering,
+//! you can use [LockableHashMap](crate::lockable_hash_map::LockableHashMap).
+//! ```
+//! use lockable::{AsyncLimit, LockableHashMap};
+//!
+//! let lockable_map = LockableHashMap::<i64, String>::new();
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//!
+//! // Insert an entry
+//! lockable_map.async_lock(4, AsyncLimit::no_limit())
+//!     .await?
+//!     .insert(String::from("Value"));
+//!
+//! // Hold a lock on a different entry
+//! let guard = lockable_map.async_lock(5, AsyncLimit::no_limit())
+//!     .await?;
+//!
+//! // This next line would wait until the lock gets released,
+//! // which in this case would cause a deadlock because we're
+//! // on the same thread
+//! // let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit())
+//! //    .await?;
+//!
+//! // After dropping the corresponding guard, we can lock it again
+//! std::mem::drop(guard);
+//! let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit())
+//!     .await?;
+//! # Ok::<(), lockable::Never>(())}).unwrap();
+//! ```
+//!
 //! ## Crate Features
 //! - `lru`: Enables the [LockableLruCache](crate::lockable_lru_cache::LockableLruCache)
 //!    type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
