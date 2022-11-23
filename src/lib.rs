@@ -12,7 +12,7 @@
 //! ```
 //! use lockable::{AsyncLimit, LockableLruCache};
 //!
-//! let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
+//! let lockable_cache = LockableLruCache::<i64, String>::new();
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
 //!
 //! // Insert an entry
@@ -24,13 +24,16 @@
 //! let guard = lockable_cache.async_lock(5, AsyncLimit::no_limit())
 //!     .await?;
 //!
-//! // This next line would wait until the lock gets released, which in this case would
-//! // cause a deadlock because we're on the same thread.
-//! // let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
+//! // This next line would wait until the lock gets released,
+//! // which in this case would cause a deadlock because we're
+//! // on the same thread
+//! // let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
+//! //    .await?;
 //!
 //! // After dropping the corresponding guard, we can lock it again
 //! std::mem::drop(guard);
-//! let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
+//! let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
+//!     .await?;
 //! # Ok::<(), lockable::Never>(())}).unwrap();
 //! ```
 //!
@@ -42,18 +45,23 @@
 //! ```
 //! use lockable::{AsyncLimit, LockableHashMap};
 //!
-//! let lockable_cache: LockableHashMap<i64, ()> = LockableHashMap::new();
+//! let lockable_cache = LockableHashMap::<i64, ()>::new();
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! let entry1 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
-//! let entry2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
+//! let guard1 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
+//!     .await?;
+//! let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
+//!     .await?;
 //!
-//! // This next line would wait until the lock gets released, which in this case would
-//! // cause a deadlock because we're on the same thread.
-//! // let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+//! // This next line would wait until the lock gets released,
+//! // which in this case would cause a deadlock because we're
+//! // on the same thread.
+//! // let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
+//! //    .await?;
 //!
 //! // After dropping the corresponding guard, we can lock it again
-//! std::mem::drop(entry1);
-//! let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+//! std::mem::drop(guard1);
+//! let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
+//!     .await?;
 //! # Ok::<(), lockable::Never>(())}).unwrap();
 //! ```
 
