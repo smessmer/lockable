@@ -23,15 +23,22 @@ This example builds a simple LRU cache and locks some entries.
 use lockable::{AsyncLimit, LockableLruCache};
 
 let lockable_cache: LockableLruCache<i64, String> = LockableLruCache::new();
-let entry1 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
-let entry2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 
-// This next line would cause a deadlock or panic because `4` is already locked on this thread
-// let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+// Insert an entry
+lockable_cache.async_lock(4, AsyncLimit::no_limit())
+    .await?
+    .insert(String::from("Value"));
+
+// Hold a lock on a different entry
+let guard = lockable_cache.async_lock(5, AsyncLimit::no_limit())
+    .await?;
+
+// This next line would cause a deadlock or panic because `5` is already locked on this thread
+// let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 
 // After dropping the corresponding guard, we can lock it again
-std::mem::drop(entry1);
-let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
+std::mem::drop(guard);
+let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 ```
 
 ### Lockpool example
