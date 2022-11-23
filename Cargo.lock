@@ -196,7 +196,7 @@ checksum = "ec647867e2bf0772e28c8bcde4f0d19a9216916e890543b5a03ed8ef27b8f259"
 
 [[package]]
 name = "lockable"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "async-trait",
  "derive_more",
