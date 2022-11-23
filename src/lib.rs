@@ -86,8 +86,6 @@ mod limit;
 mod lockable_map_impl;
 mod lockable_trait;
 mod map_like;
-mod never;
-mod time;
 mod utils;
 
 #[cfg(test)]
@@ -103,4 +101,4 @@ pub use lockable_hash_map::LockableHashMap;
 #[cfg(feature = "lru")]
 pub use lockable_lru_cache::LockableLruCache;
 pub use lockable_trait::Lockable;
-pub use never::{InfallibleUnwrap, Never};
+pub use utils::never::{InfallibleUnwrap, Never};

@@ -7,7 +7,7 @@ use crate::guard::Guard;
 use crate::hooks::Hooks;
 use crate::lockable_map_impl::{FromInto, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
-use crate::never::Never;
+use crate::utils::never::Never;
 
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
 /// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:

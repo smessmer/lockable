@@ -15,7 +15,7 @@ use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
-use super::time::{RealTime, TimeProvider};
+use super::utils::time::{RealTime, TimeProvider};
 
 type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>>>>>;
 
@@ -1038,7 +1038,7 @@ where
 mod tests {
     use super::*;
     use crate::instantiate_lockable_tests;
-    use crate::time::MockTime;
+    use crate::utils::time::MockTime;
 
     instantiate_lockable_tests!(LockableLruCache);
 
