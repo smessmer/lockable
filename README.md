@@ -11,10 +11,11 @@
 <!-- cargo-rdme start -->
 
 The [lockable](https://crates.io/crates/lockable) library offers thread-safe
-HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html))
-and LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html))
-types where individual keys can be locked/unlocked, even if there is no entry
-for this key in the map.
+HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html)),
+LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html))
+and LockPool (see [LockPool](https://docs.rs/lockable/latest/lockable/lockpool/struct.LockPool.html)) types. In all of these
+dat atypes, individual keys can be locked/unlocked, even if there is no entry
+for this key in the map or cache.
 
 This can be very useful for synchronizing access to an underlying key-value
 store or for building cache data structures on top of such a key-value store.
@@ -48,29 +49,25 @@ let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
 ```
 
 ### Lockpool example
-This example builds a simple lock pool using the [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html)
-data structure. A lock pool is a pool of keyable locks. In this example, the entries
-don't have a value assigned to them and the lock pool is only used to synchronize
-access to some keyed resource.
+This example builds a simple lock pool using the [LockPook](https://docs.rs/lockable/latest/lockable/lockpool/struct.LockPool.html)
+data structure. A lock pool is a pool of keyable locks. This can be used if
+you don't need a cache but just some way to synchronize access to an underlying
+resource.
 ```rust
-use lockable::{AsyncLimit, LockableHashMap};
+use lockable::LockPool;
 
-let lockable_cache = LockableHashMap::<i64, ()>::new();
-let guard1 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
-    .await?;
-let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
-    .await?;
+let lockpool = LockPool::new();
+let guard1 = lockpool.async_lock(4).await;
+let guard2 = lockpool.async_lock(5).await;
 
 // This next line would wait until the lock gets released,
 // which in this case would cause a deadlock because we're
 // on the same thread.
-// let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
-//    .await?;
+// let guard3 = lockpool.async_lock(4).await;
 
 // After dropping the corresponding guard, we can lock it again
 std::mem::drop(guard1);
-let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
-    .await?;
+let guard3 = lockpool.async_lock(4).await;
 ```
 
 ### Crate Features
