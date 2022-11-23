@@ -33,7 +33,8 @@ lockable_cache.async_lock(4, AsyncLimit::no_limit())
 let guard = lockable_cache.async_lock(5, AsyncLimit::no_limit())
     .await?;
 
-// This next line would cause a deadlock or panic because `5` is already locked on this thread
+// This next line would wait until the lock gets released, which in this case would
+// cause a deadlock because we're on the same thread.
 // let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 
 // After dropping the corresponding guard, we can lock it again
@@ -53,7 +54,8 @@ let lockable_cache: LockableHashMap<i64, ()> = LockableHashMap::new();
 let entry1 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 let entry2 = lockable_cache.async_lock(5, AsyncLimit::no_limit()).await?;
 
-// This next line would cause a deadlock or panic because `4` is already locked on this thread
+// This next line would wait until the lock gets released, which in this case would
+// cause a deadlock because we're on the same thread.
 // let entry3 = lockable_cache.async_lock(4, AsyncLimit::no_limit()).await?;
 
 // After dropping the corresponding guard, we can lock it again
