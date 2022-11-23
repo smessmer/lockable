@@ -35,8 +35,8 @@
 //! ```
 //!
 //! ## Lockpool example
-//! This example builds a simple lock pool using the [struct@LockableHashMap]
-//! data structure. A lock pool is a pool of keyable locks. In this example, the entries
+//! This example builds a simple lock pool using the [struct@LockableHashMap] data
+//! structure. A lock pool is a pool of keyable locks. In this example, the entries
 //! don't have a value assigned to them and the lock pool is only used to synchronize
 //! access to some keyed resource.
 //! ```
