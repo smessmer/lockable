@@ -8,6 +8,8 @@
 
 # lockable
 
+<!-- cargo-rdme start -->
+
 The [lockable](https://crates.io/crates/lockable) library offers thread-safe
 HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/struct.LockableHashMap.html)) and LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/struct.LockableLruCache.html))
 types where individual keys can be locked/unlocked, even if there is no entry
@@ -18,7 +20,6 @@ store or for building cache data structures on top of such a key-value store.
 
 ### LRU cache example
 This example builds a simple LRU cache and locks some entries.
-
 ```rust
 use lockable::{AsyncLimit, LockableLruCache};
 
@@ -74,5 +75,7 @@ let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
 ### Crate Features
 - `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/struct.LockableLruCache.html) type which adds a dependency
    on the [lru](https://crates.io/crates/lru) crate.
+
+<!-- cargo-rdme end -->
 
 License: MIT OR Apache-2.0
