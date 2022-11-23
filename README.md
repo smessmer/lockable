@@ -71,4 +71,8 @@ let guard3 = lockable_cache.async_lock(4, AsyncLimit::no_limit())
     .await?;
 ```
 
+### Crate Features
+- `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/struct.LockableLruCache.html) type which adds a dependency
+   on the [lru](https://crates.io/crates/lru) crate.
+
 License: MIT OR Apache-2.0

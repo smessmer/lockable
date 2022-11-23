@@ -64,6 +64,10 @@
 //!     .await?;
 //! # Ok::<(), lockable::Never>(())}).unwrap();
 //! ```
+//!
+//! ## Crate Features
+//! - `lru`: Enables the [struct@LockableLruCache] type which adds a dependency
+//!    on the [lru](https://crates.io/crates/lru) crate.
 
 // TODO Figure out which functions actually should or shouldn't be #[inline]
 
