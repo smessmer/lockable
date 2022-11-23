@@ -398,7 +398,7 @@ where
             })
             .collect::<FuturesUnordered<_>>()
             // Filter out entries that were removed or not-preexisting and not created while locked
-            .filter_map(|x| futures::future::ready(x))
+            .filter_map(futures::future::ready)
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: OwnedMutexGuard<EntryValue<M::V>>) {
