@@ -103,7 +103,6 @@
 //!    type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
 
 // TODO Figure out which functions actually should or shouldn't be #[inline]
-// TODO Add benchmarks, maybe take the one from the `lockpool` crate.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
