@@ -94,16 +94,6 @@ pub fn multi_thread_lock_unlock(c: &mut Criterion) {
             });
         })
     });
-    g.bench_function("LockPool (try_lock)", |b| {
-        let pool = LockPool::new();
-        b.iter(move || {
-            spawn_threads(NUM_THREADS, |_| {
-                for _ in 0..NUM_LOCKS_PER_THREAD {
-                    let _g = pool.try_lock(black_box(3)).unwrap();
-                }
-            });
-        })
-    });
 }
 
 fn spawn_threads(num: usize, func: impl Fn(usize) + Send + Sync) {
