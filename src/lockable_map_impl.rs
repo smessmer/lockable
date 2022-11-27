@@ -42,11 +42,6 @@ where
     // except through non-cloneable Guard objects encapsulating those Arcs.
     // This allows us to reason about which threads can or cannot increase the refcounts.
     //
-    // TODO The following invariant needs to be moved to LockableLruCache
-    // - The timestamps in EntryValue will follow the same order as the LRU order of the map,
-    //   with an exception for currently locked entries that may be temporarily out of order
-    //   while the entry is locked.
-    //
     // cache_entries is always Some unless we're currently destructing the object
     cache_entries: Option<std::sync::Mutex<M>>,
 
