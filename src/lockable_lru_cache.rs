@@ -62,6 +62,10 @@ where
 
 // The LRUCache actually stores <K, CacheEntry<V>> instead of <K, V> so that we can
 // remember a last_unlocked timestamp for each entry
+// Invariant:
+// -  The `last_unlocked` timestamps of CacheEntry instances in the map will follow the
+//    same order as the LRU order of the map, with an exception for currently locked
+//    entries that may be temporarily out of order while the entry is locked.
 #[derive(Debug)]
 pub struct CacheEntry<V> {
     value: V,
