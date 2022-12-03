@@ -1,4 +1,6 @@
+use std::future::Future;
 use std::hash::Hash;
+use std::sync::Arc;
 
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_hash_map::LockableHashMap;
@@ -59,6 +61,143 @@ where
         K: 'a;
 
     type OwnedGuard = <LockableHashMap<K, ()> as Lockable<K, ()>>::OwnedGuard;
+
+    type SyncLimit<'a, OnEvictFn, E> = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimit<'a, OnEvictFn, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
+        K: 'a;
+
+    type SyncLimitOwned<OnEvictFn, E> = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimitOwned<OnEvictFn, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
+
+    type AsyncLimit<'a, OnEvictFn, E, F> = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimit<'a, OnEvictFn, E, F>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
+        K: 'a;
+
+    type AsyncLimitOwned<OnEvictFn, E, F> = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimitOwned<OnEvictFn, E, F>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
+
+    #[inline]
+    fn num_entries_or_locked(&self) -> usize {
+        self.num_locked()
+    }
+
+    #[inline]
+    fn blocking_lock<'a, E, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: Self::SyncLimit<'a, OnEvictFn, E>,
+    ) -> Result<<Self as Lockable<K, ()>>::Guard<'a>, E>
+    where
+        OnEvictFn: FnMut(Vec<<Self as Lockable<K, ()>>::Guard<'a>>) -> Result<(), E>,
+    {
+        self.map.blocking_lock(key, limit)
+    }
+
+    #[inline]
+    fn blocking_lock_owned<E, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: Self::SyncLimitOwned<OnEvictFn, E>,
+    ) -> Result<Self::OwnedGuard, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>,
+    {
+        todo!() // TODO Implement this
+    }
+
+    #[inline]
+    fn try_lock<'a, E, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: Self::SyncLimit<'a, OnEvictFn, E>,
+    ) -> Result<Option<Self::Guard<'a>>, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
+    {
+        self.map.try_lock(key, limit)
+    }
+
+    #[inline]
+    fn try_lock_owned<E, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: Self::SyncLimitOwned<OnEvictFn, E>,
+    ) -> Result<Option<Self::OwnedGuard>, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>,
+    {
+        todo!() // TODO Implement this
+    }
+
+    #[inline]
+    async fn try_lock_async<'a, E, F, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: Self::AsyncLimit<'a, OnEvictFn, E, F>,
+    ) -> Result<Option<Self::Guard<'a>>, E>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
+    {
+        self.map.try_lock_async(key, limit).await
+    }
+
+    #[inline]
+    async fn try_lock_owned_async<E, F, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: Self::AsyncLimitOwned<OnEvictFn, E, F>,
+    ) -> Result<Option<Self::OwnedGuard>, E>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F,
+    {
+        todo!() // TODO Implement this
+    }
+
+    #[inline]
+    async fn async_lock<'a, E, F, OnEvictFn>(
+        &'a self,
+        key: K,
+        limit: Self::AsyncLimit<'a, OnEvictFn, E, F>,
+    ) -> Result<Self::Guard<'a>, E>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
+    {
+        self.map.async_lock(key, limit).await
+    }
+
+    #[inline]
+    async fn async_lock_owned<E, F, OnEvictFn>(
+        self: &Arc<Self>,
+        key: K,
+        limit: Self::AsyncLimitOwned<OnEvictFn, E, F>,
+    ) -> Result<Self::OwnedGuard, E>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F,
+    {
+        todo!() // TODO Implement this
+    }
+
+    #[inline]
+    fn into_entries_unordered(self) -> impl Iterator<Item = (K, ())> {
+        panic!("into_entries_unordered() doesn't make sense for LockPool");
+        // Return expression needed to infer the return type
+        std::iter::empty()
+    }
+
+    #[inline]
+    fn keys_with_entries_or_locked(&self) -> Vec<K> {
+        self.map.keys_with_entries_or_locked()
+    }
 }
 
 impl<K> LockPool<K>
@@ -149,9 +288,7 @@ where
     /// ```
     #[inline]
     pub fn blocking_lock(&self, key: K) -> <Self as Lockable<K, ()>>::Guard<'_> {
-        self.map
-            .blocking_lock(key, SyncLimit::no_limit())
-            .infallible_unwrap()
+        Lockable::blocking_lock(self, key, SyncLimit::no_limit()).infallible_unwrap()
     }
 
     // TOOD Add this
@@ -183,9 +320,7 @@ where
     // /// ```
     // #[inline]
     // pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> <Self as Lockable<K, ()>>::OwnedGuard {
-    //     self.map
-    //         .blocking_lock_owned(key, SyncLimit::no_limit())
-    //         .infallible_unwrap()
+    //    Lockable::blocking_lock_owned(self, key, SyncLimit::no_limit()).infallible_unwrap()
     // }
 
     /// Attempts to acquire the lock with the given key.
@@ -220,9 +355,7 @@ where
     /// ```
     #[inline]
     pub fn try_lock(&self, key: K) -> Option<<Self as Lockable<K, ()>>::Guard<'_>> {
-        self.map
-            .try_lock(key, SyncLimit::no_limit())
-            .infallible_unwrap()
+        Lockable::try_lock(self, key, SyncLimit::no_limit()).infallible_unwrap()
     }
 
     // TODO Add this
@@ -259,9 +392,7 @@ where
     //     self: &Arc<Self>,
     //     key: K,
     // ) -> Option<<Self as Lockable<K, ()>>::OwnedGuard> {
-    //     self.map
-    //         .try_lock_owned(key, SyncLimit::no_limit())
-    //         .infallible_unwrap()
+    //     Lockable::try_lock_owned(self, key, SyncLimit::no_limit()).infallible_unwrap()
     // }
 
     /// Lock a key and return a guard for it.
@@ -292,8 +423,7 @@ where
     /// ```
     #[inline]
     pub async fn async_lock(&self, key: K) -> <Self as Lockable<K, ()>>::Guard<'_> {
-        self.map
-            .async_lock(key, AsyncLimit::no_limit())
+        Lockable::async_lock(self, key, AsyncLimit::no_limit())
             .await
             .infallible_unwrap()
     }

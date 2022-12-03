@@ -61,7 +61,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -88,7 +88,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -125,7 +125,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -167,7 +167,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -209,7 +209,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -245,7 +245,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -290,7 +290,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -334,7 +334,7 @@ where
     /// Examples
     /// -----
     /// ```
-    /// use lockable::{AsyncLimit, LockableHashMap};
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let lockable_map = LockableHashMap::<i64, String>::new();

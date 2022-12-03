@@ -1,0 +1,4 @@
+[toolchain]
+# Nightly compiler is needed for async_fn_in_trait feature
+# TODO Remove this once the feature is in stable
+channel = "nightly"

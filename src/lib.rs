@@ -11,12 +11,8 @@
 //! ## LRU cache example
 //! This example builds a simple LRU cache and locks some entries.
 //! ```
-#![cfg_attr(
-    not(feature = "lru"),
-    doc = "```
-```ignore"
-)]
-//! use lockable::{AsyncLimit, LockableLruCache};
+#![cfg_attr(not(feature = "lru"), doc = "```\n```ignore")]
+//! use lockable::{AsyncLimit, Lockable, LockableLruCache};
 //!
 //! let lockable_cache = LockableLruCache::<i64, String>::new();
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -71,7 +67,7 @@
 //! If you need a lockable key-value store but don't need the LRU ordering,
 //! you can use [LockableHashMap](crate::lockable_hash_map::LockableHashMap).
 //! ```
-//! use lockable::{AsyncLimit, LockableHashMap};
+//! use lockable::{AsyncLimit, Lockable, LockableHashMap};
 //!
 //! let lockable_map = LockableHashMap::<i64, String>::new();
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -106,6 +102,8 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+#![feature(async_fn_in_trait)]
+#![feature(return_position_impl_trait_in_trait)]
 
 mod guard;
 mod hooks;

@@ -24,7 +24,7 @@ use crate::utils::never::Never;
 ///
 /// # Example (without limit)
 /// ```
-/// use lockable::{AsyncLimit, LockableHashMap};
+/// use lockable::{AsyncLimit, Lockable, LockableHashMap};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -35,7 +35,7 @@ use crate::utils::never::Never;
 /// # Example (with limit)
 #[cfg_attr(feature = "lru", doc = "```")]
 #[cfg_attr(not(feature = "lru"), doc = "```ignore")]
-/// use lockable::{LockableLruCache, AsyncLimit};
+/// use lockable::{LockableLruCache, Lockable, AsyncLimit};
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
@@ -179,7 +179,7 @@ where
 ///
 /// # Example (without limit)
 /// ```
-/// use lockable::{LockableHashMap, SyncLimit};
+/// use lockable::{Lockable, LockableHashMap, SyncLimit};
 ///
 /// # (|| {
 /// let lockable_map = LockableHashMap::<i64, String>::new();
@@ -190,7 +190,7 @@ where
 /// # Example (with limit)
 #[cfg_attr(feature = "lru", doc = "```")]
 #[cfg_attr(not(feature = "lru"), doc = "```ignore")]
-/// use lockable::{LockableLruCache, SyncLimit};
+/// use lockable::{Lockable, LockableLruCache, SyncLimit};
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
