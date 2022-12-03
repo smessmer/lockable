@@ -1,3 +1,4 @@
+use futures::stream::Stream;
 use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -197,6 +198,22 @@ where
     #[inline]
     fn keys_with_entries_or_locked(&self) -> Vec<K> {
         self.map.keys_with_entries_or_locked()
+    }
+
+    #[inline]
+    async fn lock_all_entries(&self) -> impl Stream<Item = <Self as Lockable<K, ()>>::Guard<'_>> {
+        panic!("lock_all_entries() doesn't make sense for LockPool");
+        // Return expression needed to infer the return type
+        futures::stream::empty()
+    }
+
+    #[inline]
+    async fn lock_all_entries_owned(
+        self: &Arc<Self>,
+    ) -> impl Stream<Item = <Self as Lockable<K, ()>>::OwnedGuard> {
+        panic!("lock_all_entries_owned() doesn't make sense for LockPool");
+        // Return expression needed to infer the return type
+        futures::stream::empty()
     }
 }
 

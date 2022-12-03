@@ -1,3 +1,4 @@
+use futures::stream::Stream;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -781,4 +782,167 @@ pub trait Lockable<K, V> {
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     fn keys_with_entries_or_locked(&self) -> Vec<K>;
+
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// The returned stream is `async` and therefore may return items much later than
+    /// when this function was called, but it only returns an entry if it existed
+    /// or was locked at the time this function was called, and still exists when
+    /// the stream is returning the entry.
+    /// For any entry currently locked by another thread or task while this function
+    /// is called, the following rules apply:
+    /// - If that thread/task creates the entry => the stream will return it
+    /// - If that thread/task removes the entry => the stream will not return it
+    /// - If the entry was not pre-existing and that thread/task does not create it => the stream will not return it.
+    ///
+    /// Example (LockableHashMap)
+    /// -----
+    /// ```
+    /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableHashMap::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
+    ///
+    /// Example (LockableLruCache)
+    /// -----
+    /// ```
+    #[cfg_attr(not(feature = "lru"), doc = "```\n```ignore")]
+    /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, Lockable, LockableLruCache};
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = LockableLruCache::<i64, String>::new();
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
+    async fn lock_all_entries(&self) -> impl Stream<Item = <Self as Lockable<K, V>>::Guard<'_>>;
+
+    /// Lock all entries of the cache once. The result of this is a [Stream] that will
+    /// produce the corresponding lock guards. If items are locked, the [Stream] will
+    /// produce them as they become unlocked and can be locked by the stream.
+    ///
+    /// This is identical to [Lockable::lock_all_entries], but but it works on
+    /// an `Arc<Lockable>` instead of a [Lockable] and returns a
+    /// [Lockable::OwnedGuard] that binds its lifetime to the [Lockable] in that
+    /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// Example (LockableHashMap)
+    /// -----
+    /// ```
+    /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, Lockable, LockableHashMap};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = Arc::new(LockableHashMap::<i64, String>::new());
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries_owned().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
+    ///
+    /// Example (LockableLruCache)
+    /// -----
+    /// ```
+    #[cfg_attr(not(feature = "lru"), doc = "```\n```ignore")]
+    /// use futures::stream::StreamExt;
+    /// use lockable::{AsyncLimit, Lockable, LockableLruCache};
+    /// use std::sync::Arc;
+    ///
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let lockable_map = Arc::new(LockableLruCache::<i64, String>::new());
+    ///
+    /// // Insert two entries
+    /// lockable_map
+    ///     .async_lock(4, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 4"));
+    /// lockable_map
+    ///     .async_lock(5, AsyncLimit::no_limit())
+    ///     .await?
+    ///     .insert(String::from("Value 5"));
+    ///
+    /// // Lock all entries and add them to an `entries` vector
+    /// let mut entries: Vec<(i64, String)> = Vec::new();
+    /// let mut stream = lockable_map.lock_all_entries_owned().await;
+    /// while let Some(guard) = stream.next().await {
+    ///     entries.push((*guard.key(), guard.value().unwrap().clone()));
+    /// }
+    ///
+    /// // `entries` now contains both entries, but in an arbitrary order
+    /// assert_eq!(2, entries.len());
+    /// assert!(entries.contains(&(4, String::from("Value 4"))));
+    /// assert!(entries.contains(&(5, String::from("Value 5"))));
+    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// ```
+    async fn lock_all_entries_owned(
+        self: &Arc<Self>,
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard>;
 }
