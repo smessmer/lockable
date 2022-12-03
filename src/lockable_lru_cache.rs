@@ -235,6 +235,11 @@ where
 
     type OwnedGuard =
         Guard<MapImpl<K, V>, V, LruCacheHooks<Time>, Arc<LockableLruCache<K, V, Time>>>;
+
+    #[cfg(test)]
+    fn _num_entries_or_locked(&self) -> usize {
+        self.num_entries_or_locked()
+    }
 }
 
 impl<K, V, Time> LockableLruCache<K, V, Time>
@@ -1044,7 +1049,10 @@ mod tests {
     use crate::instantiate_lockable_tests;
     use crate::utils::time::MockTime;
 
-    instantiate_lockable_tests!(LockableLruCache);
+    instantiate_lockable_tests!(
+        lockable_has_limit_support,
+        LockableLruCache<isize, String>
+    );
 
     macro_rules! instantiate_lock_entries_unlocked_for_at_least_tests {
         ($create_map:expr, $lock_entries_unlocked_for_at_least:ident) => {

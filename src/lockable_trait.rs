@@ -45,4 +45,7 @@ pub trait Lockable<K, V> {
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     type OwnedGuard;
+
+    #[cfg(test)]
+    fn _num_entries_or_locked(&self) -> usize;
 }

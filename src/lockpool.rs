@@ -59,6 +59,11 @@ where
         K: 'a;
 
     type OwnedGuard = <LockableHashMap<K, ()> as Lockable<K, ()>>::OwnedGuard;
+
+    #[cfg(test)]
+    fn _num_entries_or_locked(&self) -> usize {
+        self.num_locked()
+    }
 }
 
 impl<K> LockPool<K>
@@ -386,4 +391,10 @@ where
     }
 }
 
-// TODO Tests for `LockPool`
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instantiate_lockable_tests;
+
+    instantiate_lockable_tests!(lockable_doesnt_have_limit_support, LockPool<isize>);
+}

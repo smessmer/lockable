@@ -168,6 +168,11 @@ where
     V: 'a;
 
     type OwnedGuard = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+
+    #[cfg(test)]
+    fn _num_entries_or_locked(&self) -> usize {
+        self.num_entries_or_locked()
+    }
 }
 
 impl<K, V> LockableHashMap<K, V>
@@ -818,5 +823,5 @@ mod tests {
     use super::*;
     use crate::instantiate_lockable_tests;
 
-    instantiate_lockable_tests!(LockableHashMap);
+    instantiate_lockable_tests!(lockable_has_limit_support, LockableHashMap<isize, String>);
 }
