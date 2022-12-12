@@ -159,15 +159,63 @@ where
     K: Eq + PartialEq + Hash + Clone,
 {
     type Guard<'a> = Guard<
-    MapImpl<K, V>,
-    V,
-    NoopHooks,
-    &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-> where
-    K: 'a,
-    V: 'a;
+        MapImpl<K, V>,
+        V,
+        NoopHooks,
+        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+    > where
+        K: 'a,
+        V: 'a;
 
     type OwnedGuard = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+
+    type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
+        MapImpl<K, V>,
+        V,
+        NoopHooks,
+        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+        E,
+        OnEvictFn,
+    > where
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
+        K: 'a,
+        V: 'a;
+
+    type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
+        MapImpl<K, V>,
+        V,
+        NoopHooks,
+        Arc<LockableHashMap<K, V>>,
+        E,
+        OnEvictFn,
+    > where
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
+
+    type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
+        MapImpl<K, V>,
+        V,
+        NoopHooks,
+        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+        E,
+        F,
+        OnEvictFn,
+    > where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
+        K: 'a,
+        V: 'a;
+
+    type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
+        MapImpl<K, V>,
+        V,
+        NoopHooks,
+        Arc<LockableHashMap<K, V>>,
+        E,
+        F,
+        OnEvictFn,
+    > where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
 }
 
 impl<K, V> LockableHashMap<K, V>
@@ -271,14 +319,7 @@ where
     pub fn blocking_lock<'a, E, OnEvictFn>(
         &'a self,
         key: K,
-        limit: SyncLimit<
-            MapImpl<K, V>,
-            V,
-            NoopHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-            E,
-            OnEvictFn,
-        >,
+        limit: <Self as Lockable<K, V>>::SyncLimit<'a, OnEvictFn, E>,
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
@@ -316,7 +357,7 @@ where
     pub fn blocking_lock_owned<E, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
+        limit: <Self as Lockable<K, V>>::SyncLimitOwned<OnEvictFn, E>,
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
@@ -361,14 +402,7 @@ where
     pub fn try_lock<'a, E, OnEvictFn>(
         &'a self,
         key: K,
-        limit: SyncLimit<
-            MapImpl<K, V>,
-            V,
-            NoopHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-            E,
-            OnEvictFn,
-        >,
+        limit: <Self as Lockable<K, V>>::SyncLimit<'a, OnEvictFn, E>,
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::Guard<'a>>) -> Result<(), E>,
@@ -408,7 +442,7 @@ where
     pub fn try_lock_owned<E, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: SyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, OnEvictFn>,
+        limit: <Self as Lockable<K, V>>::SyncLimitOwned<OnEvictFn, E>,
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         OnEvictFn: FnMut(Vec<<Self as Lockable<K, V>>::OwnedGuard>) -> Result<(), E>,
@@ -453,15 +487,7 @@ where
     pub async fn try_lock_async<'a, E, F, OnEvictFn>(
         &'a self,
         key: K,
-        limit: AsyncLimit<
-            MapImpl<K, V>,
-            V,
-            NoopHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-            E,
-            F,
-            OnEvictFn,
-        >,
+        limit: <Self as Lockable<K, V>>::AsyncLimit<'a, OnEvictFn, E, F>,
     ) -> Result<Option<<Self as Lockable<K, V>>::Guard<'a>>, E>
     where
         F: Future<Output = Result<(), E>>,
@@ -510,7 +536,7 @@ where
     pub async fn try_lock_owned_async<E, F, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
+        limit: <Self as Lockable<K, V>>::AsyncLimitOwned<OnEvictFn, E, F>,
     ) -> Result<Option<<Self as Lockable<K, V>>::OwnedGuard>, E>
     where
         F: Future<Output = Result<(), E>>,
@@ -553,15 +579,7 @@ where
     pub async fn async_lock<'a, E, F, OnEvictFn>(
         &'a self,
         key: K,
-        limit: AsyncLimit<
-            MapImpl<K, V>,
-            V,
-            NoopHooks,
-            &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
-            E,
-            F,
-            OnEvictFn,
-        >,
+        limit: <Self as Lockable<K, V>>::AsyncLimit<'a, OnEvictFn, E, F>,
     ) -> Result<<Self as Lockable<K, V>>::Guard<'a>, E>
     where
         F: Future<Output = Result<(), E>>,
@@ -609,7 +627,7 @@ where
     pub async fn async_lock_owned<E, F, OnEvictFn>(
         self: &Arc<Self>,
         key: K,
-        limit: AsyncLimit<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>,
+        limit: <Self as Lockable<K, V>>::AsyncLimitOwned<OnEvictFn, E, F>,
     ) -> Result<<Self as Lockable<K, V>>::OwnedGuard, E>
     where
         F: Future<Output = Result<(), E>>,

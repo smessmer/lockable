@@ -1,3 +1,5 @@
+use std::future::Future;
+
 /// A common trait for both [LockableHashMap](crate::LockableHashMap) and [LockableLruCache](crate::LockableLruCache) that offers some common
 /// functionalities.
 pub trait Lockable<K, V> {
@@ -45,4 +47,32 @@ pub trait Lockable<K, V> {
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     type OwnedGuard;
+
+    /// TODO Documentation
+    type SyncLimit<'a, OnEvictFn, E>
+    where
+        Self: 'a,
+        K: 'a,
+        V: 'a,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>;
+
+    /// TODO Documentation
+    type SyncLimitOwned<OnEvictFn, E>
+    where
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
+
+    /// TODO Documentation
+    type AsyncLimit<'a, OnEvictFn, E, F>
+    where
+        Self: 'a,
+        K: 'a,
+        V: 'a,
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F;
+
+    /// TODO Documentation
+    type AsyncLimitOwned<OnEvictFn, E, F>
+    where
+        F: Future<Output = Result<(), E>>,
+        OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
 }
