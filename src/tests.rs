@@ -230,6 +230,9 @@ macro_rules! instantiate_lockable_tests {
                 Arc::new($lockable_type::<K, V>::new())
             }
             fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
+                map.try_lock_owned(key, SyncLimit::no_limit()).infallible_unwrap().expect("Entry already locked")
+            }
+            fn lock_waiting_is_ok<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
                 let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock_owned(key.clone(), SyncLimit::no_limit()).infallible_unwrap() {
@@ -305,7 +308,10 @@ macro_rules! instantiate_lockable_tests {
             fn new(&self) -> Arc<$lockable_type::<K, V>> {
                 Arc::new($lockable_type::<K, V>::new())
             }
-            async fn lock<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
+            async fn lock<'a>(&self, map: &'a Arc<$lockable_type::<K, V>>, key: K) -> Self::Guard<'a> {
+                map.try_lock_owned_async(key, AsyncLimit::no_limit()).await.infallible_unwrap().expect("Entry already locked")
+            }
+            async fn lock_waiting_is_ok<'a>(&self, map: &'a Arc<$lockable_type<K, V>>, key: K) -> Self::Guard<'a> {
                 let start = Instant::now();
                 loop {
                     if let Some(guard) = map.try_lock_owned_async(key.clone(), AsyncLimit::no_limit()).await.infallible_unwrap() {
