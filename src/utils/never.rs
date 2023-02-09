@@ -40,6 +40,9 @@ mod tests {
         assert_eq!(4, result.infallible_unwrap());
 
         let result: Result<(), Never> = Ok(());
-        assert_eq!((), result.infallible_unwrap());
+        {
+            #![allow(clippy::unit_cmp)]
+            assert_eq!((), result.infallible_unwrap());
+        }
     }
 }
