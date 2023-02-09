@@ -212,7 +212,8 @@ where
     /// Attempts to acquire the lock with the given key.
     /// Any changes to that entry will be persisted in the map.
     /// Locking a key prevents any other threads from locking the same key, but the action of locking a key doesn't insert
-    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert] and [Guard::remove] on the returned entry guard.
+    /// a map entry by itself. Map entries can be inserted and removed using [Guard::insert](crate::Guard::insert) and
+    /// [Guard::remove](crate::Guard::remove) on the returned entry guard.
     ///
     /// If the lock could not be acquired because it is already locked, then [Ok](Ok)([None]) is returned. Otherwise, a RAII guard is returned.
     /// The lock will be unlocked when the guard is dropped.
