@@ -12,6 +12,11 @@ pub struct EntryValue<V> {
 
 type Entry<V> = Arc<Mutex<EntryValue<V>>>;
 
+pub enum GetOrInsertNoneResult<V> {
+    Existing(V),
+    Inserted(V),
+}
+
 /// [ArcMutexMapLike] needs to be implemented for each kind of map we want to support, e.g.
 /// for [LruCache] and [HashMap]. This is the basis for that map becoming usable in a [LockableMapImpl]
 /// instance.
@@ -28,7 +33,7 @@ pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
 
     fn len(&self) -> usize;
 
-    fn get_or_insert_none(&mut self, key: &Self::K) -> &Entry<Self::V>;
+    fn get_or_insert_none(&mut self, key: &Self::K) -> GetOrInsertNoneResult<Entry<Self::V>>;
 
     fn get(&mut self, key: &Self::K) -> Option<&Entry<Self::V>>;
 

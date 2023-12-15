@@ -14,7 +14,7 @@ use super::hooks::Hooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::{FromInto, LockableMapImpl};
 use super::lockable_trait::Lockable;
-use super::map_like::{ArcMutexMapLike, EntryValue};
+use super::map_like::{ArcMutexMapLike, EntryValue, GetOrInsertNoneResult};
 use super::utils::time::{RealTime, TimeProvider};
 
 type MapImpl<K, V> = LruCache<K, Arc<tokio::sync::Mutex<EntryValue<CacheEntry<V>>>>>;
@@ -40,11 +40,21 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>> {
-        // TODO Is there a way to only clone the key when the entry doesn't already exist?
-        self.get_or_insert(key.clone(), || {
-            Arc::new(Mutex::new(EntryValue { value: None }))
-        })
+    fn get_or_insert_none(
+        &mut self,
+        key: &Self::K,
+    ) -> GetOrInsertNoneResult<Arc<Mutex<EntryValue<Self::V>>>> {
+        // TODO It might be faster to use [LruCache::get_or_insert] here, but that unfortunately doesn't report back whether the entry already existed.
+        //      Or use an `Entry` based API similar to the one offered by the standard library.
+        //      Or even better, `RawEntry` so we only have to clone the key if it doesn't already exist.
+        match self.get(key) {
+            Some(value) => GetOrInsertNoneResult::Existing(Arc::clone(value)),
+            None => {
+                let value = Arc::new(Mutex::new(EntryValue { value: None }));
+                self.put(key.clone(), Arc::clone(&value));
+                GetOrInsertNoneResult::Inserted(value)
+            }
+        }
     }
 
     fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>> {

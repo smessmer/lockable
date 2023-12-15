@@ -1,6 +1,6 @@
 use futures::stream::Stream;
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
@@ -13,6 +13,7 @@ use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
 use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
+use crate::map_like::GetOrInsertNoneResult;
 
 type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 
@@ -35,12 +36,21 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(&mut self, key: &Self::K) -> &Arc<Mutex<EntryValue<Self::V>>> {
+    fn get_or_insert_none(
+        &mut self,
+        key: &Self::K,
+    ) -> GetOrInsertNoneResult<Arc<Mutex<EntryValue<Self::V>>>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
         //      Might be possible with the upcoming RawEntry API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
-        self.entry(key.clone())
-            .or_insert_with(|| Arc::new(Mutex::new(EntryValue { value: None })))
+        match self.entry(key.clone()) {
+            Entry::Occupied(entry) => GetOrInsertNoneResult::Existing(Arc::clone(entry.get())),
+            Entry::Vacant(entry) => {
+                let value = Arc::new(Mutex::new(EntryValue { value: None }));
+                entry.insert(Arc::clone(&value));
+                GetOrInsertNoneResult::Inserted(value)
+            }
+        }
     }
 
     fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>> {

@@ -10,7 +10,7 @@ use tokio::sync::OwnedMutexGuard;
 use super::guard::Guard;
 use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
-use super::map_like::{ArcMutexMapLike, EntryValue};
+use super::map_like::{ArcMutexMapLike, EntryValue, GetOrInsertNoneResult};
 
 pub trait FromInto<V, H: Hooks<Self>>: Sized {
     fn fi_from(v: V, hooks: &H) -> Self;
@@ -71,6 +71,15 @@ where
     }
 }
 
+enum LoadOrInsertMutexResult<V> {
+    Existing {
+        mutex: Arc<tokio::sync::Mutex<V>>,
+    },
+    Inserted {
+        guard: tokio::sync::OwnedMutexGuard<V>,
+    },
+}
+
 impl<M, V, H> LockableMapImpl<M, V, H>
 where
     M: ArcMutexMapLike,
@@ -114,7 +123,7 @@ where
         this: &S,
         key: &M::K,
         limit: AsyncLimit<M, V, H, S, E, F, OnEvictFn>,
-    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
+    ) -> Result<LoadOrInsertMutexResult<EntryValue<M::V>>, E>
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
@@ -173,15 +182,25 @@ where
                 }
             }
         };
-        let entry = cache_entries.get_or_insert_none(key);
-        Ok(Arc::clone(entry))
+        let result = match cache_entries.get_or_insert_none(key) {
+            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
+            GetOrInsertNoneResult::Inserted(mutex) => {
+                // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
+                // can be `None`, so we need to lock it and our caller needs to make sure they handle this correctly.
+                let guard = mutex.try_lock_owned().expect(
+                    "We're the only one who has seen this mutex so far. Locking can't fail.",
+                );
+                LoadOrInsertMutexResult::Inserted { guard }
+            }
+        };
+        Ok(result)
     }
 
     fn _load_or_insert_mutex_for_key_sync<S, E, OnEvictFn>(
         this: &S,
         key: &M::K,
         limit: SyncLimit<M, V, H, S, E, OnEvictFn>,
-    ) -> Result<Arc<tokio::sync::Mutex<EntryValue<M::V>>>, E>
+    ) -> Result<LoadOrInsertMutexResult<EntryValue<M::V>>, E>
     where
         S: Borrow<Self> + Clone,
         OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
@@ -238,8 +257,18 @@ where
                 }
             }
         };
-        let entry = cache_entries.get_or_insert_none(key);
-        Ok(Arc::clone(entry))
+        let result = match cache_entries.get_or_insert_none(key) {
+            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
+            GetOrInsertNoneResult::Inserted(mutex) => {
+                // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
+                // can be `None`, so we need to lock it and our caller needs to make sure they handle this correctly.
+                let guard = mutex.try_lock_owned().expect(
+                    "We're the only one who has seen this mutex so far. Locking can't fail.",
+                );
+                LoadOrInsertMutexResult::Inserted { guard }
+            }
+        };
+        Ok(result)
     }
 
     fn _make_guard<S: Borrow<Self>>(
@@ -264,7 +293,10 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the thread until the mutex for this key is acquired.
 
-        let guard = mutex.blocking_lock_owned();
+        let guard = match mutex {
+            LoadOrInsertMutexResult::Existing { mutex } => mutex.blocking_lock_owned(),
+            LoadOrInsertMutexResult::Inserted { guard } => guard,
+        };
 
         Ok(Self::_make_guard(this, key, guard))
     }
@@ -284,7 +316,11 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following blocks the task until the mutex for this key is acquired.
 
-        let guard = mutex.lock_owned().await;
+        let guard = match mutex {
+            LoadOrInsertMutexResult::Existing { mutex } => mutex.lock_owned().await,
+            LoadOrInsertMutexResult::Inserted { guard } => guard,
+        };
+
         Ok(Self::_make_guard(this, key, guard))
     }
 
@@ -302,9 +338,14 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
 
-        match mutex.try_lock_owned() {
-            Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
-            Err(_) => Ok(None),
+        match mutex {
+            LoadOrInsertMutexResult::Existing { mutex } => match mutex.try_lock_owned() {
+                Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
+                Err(_) => Ok(None),
+            },
+            LoadOrInsertMutexResult::Inserted { guard } => {
+                Ok(Some(Self::_make_guard(this, key, guard)))
+            }
         }
     }
 
@@ -323,9 +364,14 @@ where
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
         // The following tries to lock the mutex.
 
-        match mutex.try_lock_owned() {
-            Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
-            Err(_) => Ok(None),
+        match mutex {
+            LoadOrInsertMutexResult::Existing { mutex } => match mutex.try_lock_owned() {
+                Ok(guard) => Ok(Some(Self::_make_guard(this, key, guard))),
+                Err(_) => Ok(None),
+            },
+            LoadOrInsertMutexResult::Inserted { guard } => {
+                Ok(Some(Self::_make_guard(this, key, guard)))
+            }
         }
     }
 

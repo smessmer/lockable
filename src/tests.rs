@@ -504,8 +504,19 @@ macro_rules! instantiate_lockable_tests {
         #[should_panic(
             expected = "Cannot block the current thread from within a runtime. This happens because a function attempted to block the current thread while the thread is being used to drive asynchronous tasks."
         )]
-        async fn blocking_lock_from_async_context_with_sync_api() {
+        async fn blocking_lock_from_async_context_with_sync_api_for_existing_entry() {
             let p = $lockable_type::<isize, String>::new();
+            // First insert the entry to make sure it exists (otherwise, blocking_lock will succeed because it doesn't have to block to lock a newly created mutex)
+            p.blocking_lock(3, SyncLimit::no_limit()).unwrap().insert(String::new());
+            // Now run the actual test that we're expecting to panic
+            let _ = p.blocking_lock(3, SyncLimit::no_limit());
+        }
+
+        #[tokio::test]
+        async fn blocking_lock_from_async_context_with_sync_api_for_new_entry() {
+            let p = $lockable_type::<isize, String>::new();
+            // Calling blocking_lock from async context for a new entry is currently working fine because it doesn't actually need to execute async code.
+            // This is not encouraged to be used by users but adding a test here so we notice if we break that behavior.
             let _ = p.blocking_lock(3, SyncLimit::no_limit());
         }
 
@@ -513,8 +524,19 @@ macro_rules! instantiate_lockable_tests {
         #[should_panic(
             expected = "Cannot block the current thread from within a runtime. This happens because a function attempted to block the current thread while the thread is being used to drive asynchronous tasks."
         )]
-        async fn blocking_lock_owned_from_async_context_with_sync_api() {
+        async fn blocking_lock_owned_from_async_context_with_sync_api_for_existing_entry() {
             let p = Arc::new($lockable_type::<isize, String>::new());
+            // First insert the entry to make sure it exists (otherwise, blocking_lock will succeed because it doesn't have to block to lock a newly created mutex)
+            p.blocking_lock(3, SyncLimit::no_limit()).unwrap().insert(String::new());
+            // Now run the actual test that we're expecting to panic
+            let _ = p.blocking_lock_owned(3, SyncLimit::no_limit());
+        }
+
+        #[tokio::test]
+        async fn blocking_lock_owned_from_async_context_with_sync_api_for_new_entry() {
+            let p = Arc::new($lockable_type::<isize, String>::new());
+            // Calling blocking_lock from async context for a new entry is currently working fine because it doesn't actually need to execute async code.
+            // This is not encouraged to be used by users but adding a test here so we notice if we break that behavior.
             let _ = p.blocking_lock_owned(3, SyncLimit::no_limit());
         }
 
