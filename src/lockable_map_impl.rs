@@ -1,4 +1,5 @@
 use futures::stream::{FuturesUnordered, Stream, StreamExt};
+use itertools::Itertools;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 use std::future::Future;
@@ -10,7 +11,6 @@ use super::guard::Guard;
 use super::hooks::{Hooks, NoopHooks};
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{ArcMutexMapLike, EntryValue};
-use super::utils::take_while_inclusive::TakeWhileInclusiveIterExt;
 
 pub trait FromInto<V, H: Hooks<Self>>: Sized {
     fn fi_from(v: V, hooks: &H) -> Self;
