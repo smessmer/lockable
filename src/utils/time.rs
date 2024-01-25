@@ -19,6 +19,7 @@ impl Default for RealTime {
 
 #[cfg(test)]
 #[cfg(feature = "lru")]
+#[allow(clippy::items_after_test_module)]
 mod mock_time {
     use super::*;
     use std::sync::{Arc, Mutex};
