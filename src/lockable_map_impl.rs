@@ -530,7 +530,7 @@ where
         entries: &mut std::sync::MutexGuard<'_, M>,
         num_entries: usize,
     ) -> Vec<Guard<M, V, H, S>> {
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(num_entries);
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
             if let Ok(guard) = Arc::clone(mutex).try_lock_owned() {
