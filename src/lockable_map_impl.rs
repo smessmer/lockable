@@ -42,13 +42,11 @@ where
     // except through non-cloneable Guard objects encapsulating those Arcs.
     // This allows us to reason about which threads can or cannot increase the refcounts.
     //
-    // entries is always Some unless we're currently destructing the object
-    //
     // Invariant (true whenever `entries` is unlocked):
     //   If an entry is in the map and the value is `None`, then there must be a lock on the entry.
     //   This is because the only reason to allow `None` in the map is for locking keys that don't have a value.
     //   But once the lock is released, the entry should be removed from the map.
-    entries: Option<std::sync::Mutex<M>>,
+    entries: std::sync::Mutex<M>,
 
     hooks: H,
 
@@ -94,7 +92,7 @@ where
     #[inline]
     pub fn new_with_hooks(hooks: H) -> Self {
         Self {
-            entries: Some(std::sync::Mutex::new(M::new())),
+            entries: std::sync::Mutex::new(M::new()),
             hooks,
             _v: PhantomData,
         }
@@ -118,8 +116,6 @@ where
 
     fn _entries(&self) -> std::sync::MutexGuard<'_, M> {
         self.entries
-            .as_ref()
-            .expect("Object is currently being destructed")
             .lock()
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
     }
@@ -510,13 +506,8 @@ where
         }
     }
 
-    pub fn into_entries_unordered(mut self) -> impl Iterator<Item = (M::K, M::V)> {
-        let entries: M = self
-            .entries
-            .take()
-            .expect("Object is already being destructed")
-            .into_inner()
-            .expect("Lock poisoned");
+    pub fn into_entries_unordered(self) -> impl Iterator<Item = (M::K, M::V)> {
+        let entries: M = self.entries.into_inner().expect("Lock poisoned");
 
         // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
         // Guard for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
