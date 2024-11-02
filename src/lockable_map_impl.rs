@@ -250,6 +250,7 @@ where
                         // race conditions. Because of that, once on_evict returns, we'll check
                         // take the lock again in the next loop iteration and check again if we now
                         // have enough space
+                        // TODO Is there a better way, maybe to pass our entries lock to the unlock function, so we don't have to unlock it here just so it gets relocked by them? This could also simplify the race condition avoidance code we have here. Same above in _load_or_insert_mutex_for_key_async.
                         std::mem::drop(entries);
                         locked
                     };
@@ -447,6 +448,7 @@ where
         // We need to get the `entries` lock before we drop the guard, see comment in [Self::_delete_if_unlocked_and_nobody_waiting_for_lock]
         // about other threads not being able to enter this function.
         let mut entries = self._entries();
+        // TODO Can we move the hook and the entry_carries_a_value calculation to above locking `entries`?
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
         std::mem::drop(guard);
