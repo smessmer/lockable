@@ -41,9 +41,9 @@ use super::utils::never::InfallibleUnwrap;
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
 ///
-/// Under the hood, a [LockPool] is a [LockPool] with `()` as a value type, i.e. `LockPool<K>` is just a wrapper
-/// around `LockPool<K, ()>` with a simpler API. If you need more complex functionalities, please look at
-/// [LockPool].
+/// Under the hood, a [LockPool] is a [LockableHashMap] with `()` as a value type, i.e. `LockPool<K>` is just a wrapper
+/// around `LockableHashMap<K, ()>` with a simpler API. If you need more complex functionalities, please look at
+/// [LockableHashMap].
 pub struct LockPool<K>
 where
     K: Eq + PartialEq + Hash + Clone,
