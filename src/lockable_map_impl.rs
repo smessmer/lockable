@@ -255,11 +255,18 @@ where
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
-                        // for those entries. That means other user code may also run and cause
-                        // race conditions. Because of that, once on_evict returns, we'll check
-                        // take the lock again in the next loop iteration and check again if we now
-                        // have enough space
-                        // TODO Is there a better way, maybe to pass our entries lock to the unlock function, so we don't have to unlock it here just so it gets relocked by them? This could also simplify the race condition avoidance code we have here. Same above in _load_or_insert_mutex_for_key_async.
+                        // for those entries. Additionally, we don't want `entries` to stay locked
+                        // since user eviction code may write the entry back to an underlying
+                        // storage layer and take some time.
+                        //
+                        // We do want to keep the entry itself locked and pass the guard to user code,
+                        // because if user code does do writebacks, it probably needs the entry to be
+                        // locked until the writeback is complete.
+                        //
+                        // However, unlocking entries means other user code may also run and cause
+                        // race conditions, e.g. add new entries into the space we just created.
+                        // Because of that, once on_evict returns, we'll check take the lock again
+                        // in the next loop iteration and check again if we now have enough space.
                         std::mem::drop(entries);
                         locked
                     };
