@@ -3,7 +3,7 @@ authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 categories = ["asynchronous", "concurrency"]
 description = "This library offers hash map and cache data structures where individual entries can be locked"
 documentation = "https://docs.rs/lockable"
-rust-version = "1.70.0"
+rust-version = "1.70"
 edition = "2021"
 homepage = "https://github.com/smessmer/lockable"
 keywords = ["concurrency", "thread", "locks", "mutex"]
@@ -22,14 +22,13 @@ default = ["lru"]
 [dependencies]
 futures = "^0.3"
 lru = {version = "^0.12", optional = true}
-thiserror = "^1.0"
 tokio = {version = "^1.22", features = ["sync", "time"]}
-derive_more = "^0.99"
-itertools = "^0.12"
+derive_more = {version = "^1.0", features = ["display", "error"]}
+itertools = "^0.13"
 
 [dev-dependencies]
 tokio = {version = "^1.22", features = ["sync", "time", "macros", "rt-multi-thread"]}
-async-trait = "^0.1.43"
+async-trait = "^0.1.83"
 criterion = {version = "^0.5", features = ["async_tokio"]}
 
 [[bench]]

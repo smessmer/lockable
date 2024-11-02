@@ -1,7 +1,7 @@
+use derive_more::{Display, Error};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
-use thiserror::Error;
 use tokio::sync::OwnedMutexGuard;
 
 use super::hooks::Hooks;
@@ -391,10 +391,10 @@ where
 }
 
 /// This error is thrown by [Guard::try_insert] if the entry already exists
-#[derive(Error, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Error, Debug, Display, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TryInsertError<V> {
     /// The entry couldn't be inserted because it already exists
-    #[error("The entry couldn't be inserted because it already exists")]
+    #[display("The entry couldn't be inserted because it already exists")]
     AlreadyExists {
         /// The value that was attempted to be inserted
         value: V,
