@@ -42,8 +42,8 @@ where
     // except through non-cloneable Guard objects encapsulating those Arcs.
     // This allows us to reason about which threads can or cannot increase the refcounts.
     //
-    // cache_entries is always Some unless we're currently destructing the object
-    cache_entries: Option<std::sync::Mutex<M>>,
+    // entries is always Some unless we're currently destructing the object
+    entries: Option<std::sync::Mutex<M>>,
 
     hooks: H,
 
@@ -89,7 +89,7 @@ where
     #[inline]
     pub fn new_with_hooks(hooks: H) -> Self {
         Self {
-            cache_entries: Some(std::sync::Mutex::new(M::new())),
+            entries: Some(std::sync::Mutex::new(M::new())),
             hooks,
             _v: PhantomData,
         }
@@ -108,11 +108,11 @@ where
 
     #[inline]
     pub fn num_entries_or_locked(&self) -> usize {
-        self._cache_entries().len()
+        self._entries().len()
     }
 
-    fn _cache_entries(&self) -> std::sync::MutexGuard<'_, M> {
-        self.cache_entries
+    fn _entries(&self) -> std::sync::MutexGuard<'_, M> {
+        self.entries
             .as_ref()
             .expect("Object is currently being destructed")
             .lock()
@@ -130,10 +130,10 @@ where
         OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> F,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
-        let mut cache_entries = match limit {
+        let mut entries = match limit {
             AsyncLimit::NoLimit { .. } => {
                 // do nothing
-                this.borrow()._cache_entries()
+                this.borrow()._entries()
             }
             AsyncLimit::SoftLimit {
                 max_entries,
@@ -142,17 +142,17 @@ where
                 // free up space for the new entry if necessary
                 loop {
                     let locked = {
-                        let mut cache_entries = this.borrow()._cache_entries();
+                        let mut entries = this.borrow()._entries();
                         let num_overlimit_entries =
-                            cache_entries.len().saturating_sub(max_entries.get() - 1);
+                            entries.len().saturating_sub(max_entries.get() - 1);
                         if num_overlimit_entries == 0 {
                             // There is enough space, no need to free up space
-                            break cache_entries;
+                            break entries;
                         }
                         // There is not enough space, free up some.
                         let locked = Self::_lock_up_to_n_first_unlocked_entries(
                             this,
-                            &mut cache_entries,
+                            &mut entries,
                             num_overlimit_entries,
                         );
 
@@ -165,24 +165,24 @@ where
                         // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
                         if locked.is_empty() {
                             // TODO Test that this works, i.e. that the map still correctly works when it's full and doesn't deadlock (and same for the _load_or_insert_mutex_for_key_sync version)
-                            break cache_entries;
+                            break entries;
                         }
 
                         // We now have some entries locked that may free up enough space.
-                        // Let's evict them. We have to free up the cache_entries lock for that
+                        // Let's evict them. We have to free up the entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
                         // for those entries. That means other user code may also run and cause
                         // race conditions. Because of that, once on_evict returns, we'll check
                         // take the lock again in the next loop iteration and check again if we now
                         // have enough space
-                        std::mem::drop(cache_entries);
+                        std::mem::drop(entries);
                         locked
                     };
                     on_evict(locked).await?;
                 }
             }
         };
-        let result = match cache_entries.get_or_insert_none(key) {
+        let result = match entries.get_or_insert_none(key) {
             GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
@@ -206,10 +206,10 @@ where
         OnEvictFn: FnMut(Vec<Guard<M, V, H, S>>) -> Result<(), E>,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
-        let mut cache_entries = match limit {
+        let mut entries = match limit {
             SyncLimit::NoLimit { .. } => {
                 // do nothing
-                this.borrow()._cache_entries()
+                this.borrow()._entries()
             }
             SyncLimit::SoftLimit {
                 max_entries,
@@ -218,17 +218,17 @@ where
                 // free up space for the new entry if necessary
                 loop {
                     let locked = {
-                        let mut cache_entries = this.borrow()._cache_entries();
+                        let mut entries = this.borrow()._entries();
                         let num_overlimit_entries =
-                            cache_entries.len().saturating_sub(max_entries.get() - 1);
+                            entries.len().saturating_sub(max_entries.get() - 1);
                         if num_overlimit_entries == 0 {
                             // There is enough space, no need to free up space
-                            break cache_entries;
+                            break entries;
                         }
                         // There is not enough space, free up some.
                         let locked = Self::_lock_up_to_n_first_unlocked_entries(
                             this,
-                            &mut cache_entries,
+                            &mut entries,
                             num_overlimit_entries,
                         );
 
@@ -240,24 +240,24 @@ where
                         // request, even though it goes above the limit.
                         // This is why we call [AsyncLimit::SoftLimit] a "soft" limit.
                         if locked.is_empty() {
-                            break cache_entries;
+                            break entries;
                         }
 
                         // We now have some entries locked that may free up enough space.
-                        // Let's evict them. We have to free up the cache_entries lock for that
+                        // Let's evict them. We have to free up the entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
                         // for those entries. That means other user code may also run and cause
                         // race conditions. Because of that, once on_evict returns, we'll check
                         // take the lock again in the next loop iteration and check again if we now
                         // have enough space
-                        std::mem::drop(cache_entries);
+                        std::mem::drop(entries);
                         locked
                     };
                     on_evict(locked)?;
                 }
             }
         };
-        let result = match cache_entries.get_or_insert_none(key) {
+        let result = match entries.get_or_insert_none(key) {
             GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
@@ -379,36 +379,36 @@ where
         this: S,
         take_while_condition: &impl Fn(&Guard<M, V, H, S>) -> bool,
     ) -> Vec<Guard<M, V, H, S>> {
-        let cache_entries = this.borrow()._cache_entries();
-        let mut entries = cache_entries
+        let entries = this.borrow()._entries();
+        let mut previously_unlocked_entries = entries
             .iter()
             .filter_map(|(key, mutex)| match Arc::clone(mutex).try_lock_owned() {
                 Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                 Err(_) => None,
             })
             .take_while_inclusive(take_while_condition)
-            // Collecting into a Vec so that we don't have to keep `cache_entries` locked
+            // Collecting into a Vec so that we don't have to keep `entries` locked
             // while the returned iterator is alive.
             .collect::<Vec<_>>();
 
         // We now have all entries fulfilling the `take_while_condition` plus one entry that probably does not
         // (however, it might fulfill the condition if all entries fulfill it).
         // We need to remove that last entry and drop it, but before we can do that, we need to drop
-        // `cache_entries` because otherwise we'd have a deadlock when the entry tries to unlock itself.
+        // `entries` because otherwise we'd have a deadlock when the entry tries to unlock itself.
         // This whole issue is actually the reason why we used `take_while_inclusive` instead of just
         // `take_while` above. `take_while` would drop this entry while the stream is being processed
         // and cause this very deadlock.
 
-        std::mem::drop(cache_entries);
-        if let Some(last_entry) = entries.last() {
+        std::mem::drop(entries);
+        if let Some(last_entry) = previously_unlocked_entries.last() {
             if !take_while_condition(last_entry) {
-                std::mem::drop(entries.pop().expect(
+                std::mem::drop(previously_unlocked_entries.pop().expect(
                     "In this code branch, we already verified that there is a last entry.",
                 ));
             }
         }
 
-        entries
+        previously_unlocked_entries
     }
 
     /// Locks all entries in the cache and returns their guards as a stream.
@@ -420,8 +420,8 @@ where
     pub async fn lock_all_entries<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Stream<Item = Guard<M, V, H, S>> {
-        let cache_entries = this.borrow()._cache_entries();
-        cache_entries
+        let entries = this.borrow()._entries();
+        entries
             .iter()
             .map(|(key, mutex)| {
                 let this = this.clone();
@@ -443,7 +443,7 @@ where
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: OwnedMutexGuard<EntryValue<M::V>>) {
-        let mut cache_entries = self._cache_entries();
+        let mut entries = self._entries();
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
         std::mem::drop(guard);
@@ -458,27 +458,27 @@ where
         // doesn't exist in the map and was only created to have a place to put
         // the mutex.
         if !entry_carries_a_value {
-            Self::_delete_if_unlocked_and_nobody_waiting_for_lock(&mut cache_entries, key);
+            Self::_delete_if_unlocked_and_nobody_waiting_for_lock(&mut entries, key);
         }
     }
 
     fn _delete_if_unlocked_and_nobody_waiting_for_lock(
-        cache_entries: &mut std::sync::MutexGuard<'_, M>,
+        entries: &mut std::sync::MutexGuard<'_, M>,
         key: &M::K,
     ) {
-        let mutex: &Arc<tokio::sync::Mutex<EntryValue<M::V>>> = cache_entries
+        let mutex: &Arc<tokio::sync::Mutex<EntryValue<M::V>>> = entries
             .get(key)
             .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
         // If there are any other locks or any other tasks currently waiting in Self::blocking_lock/async_lock/try_lock,
         // then Arc::strong_count() will be larger than one.
-        // But since we still have the global mutex on cache_entries, currently no
+        // But since we still have the global mutex on entries, currently no
         // thread can newly call Self::blocking_lock/async_lock/try_lock() and create a
         // new clone of our Arc. Similarly, no other thread can enter Self::_unlock()
         // and reduce the strong_count of the Arc by dropping the guard. This means that if
         // Arc::strong_count() == 1, we know that there is no other thread with access
         // that could modify strong_count. We can clean up without race conditions.
         if Arc::strong_count(mutex) == 1 {
-            let remove_result = cache_entries.remove(key);
+            let remove_result = entries.remove(key);
             assert!(
                 remove_result.is_some(),
                 "We just got this entry above from the hash map, it cannot have vanished since then"
@@ -493,7 +493,7 @@ where
 
     pub fn into_entries_unordered(mut self) -> impl Iterator<Item = (M::K, M::V)> {
         let entries: M = self
-            .cache_entries
+            .entries
             .take()
             .expect("Object is already being destructed")
             .into_inner()
@@ -519,12 +519,8 @@ where
     // Caveat: Locked keys are listed even if they don't carry a value
     #[inline]
     pub fn keys_with_entries_or_locked(&self) -> Vec<M::K> {
-        let cache_entries = self._cache_entries();
-        cache_entries
-            .iter()
-            .map(|(key, _value)| key)
-            .cloned()
-            .collect()
+        let entries = self._entries();
+        entries.iter().map(|(key, _value)| key).cloned().collect()
     }
 
     fn _lock_up_to_n_first_unlocked_entries<S: Borrow<Self> + Clone>(
