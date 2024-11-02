@@ -43,6 +43,11 @@ where
     // This allows us to reason about which threads can or cannot increase the refcounts.
     //
     // entries is always Some unless we're currently destructing the object
+    //
+    // Invariant (true whenever `entries` is unlocked):
+    //   If an entry is in the map and the value is `None`, then there must be a lock on the entry.
+    //   This is because the only reason to allow `None` in the map is for locking keys that don't have a value.
+    //   But once the lock is released, the entry should be removed from the map.
     entries: Option<std::sync::Mutex<M>>,
 
     hooks: H,
@@ -171,10 +176,18 @@ where
                         // We now have some entries locked that may free up enough space.
                         // Let's evict them. We have to free up the entries lock for that
                         // so that the on_evict user code can call back into Self::_unlock()
-                        // for those entries. That means other user code may also run and cause
-                        // race conditions. Because of that, once on_evict returns, we'll check
-                        // take the lock again in the next loop iteration and check again if we now
-                        // have enough space
+                        // for those entries. Additionally, we don't want `entries` to stay locked
+                        // since user eviction code may write the entry back to an underlying
+                        // storage layer and take some time.
+                        //
+                        // We do want to keep the entry itself locked and pass the guard to user code,
+                        // because if user code does do writebacks, it probably needs the entry to be
+                        // locked until the writeback is complete.
+                        //
+                        // However, unlocking entries means other user code may also run and cause
+                        // race conditions, e.g. add new entries into the space we just created.
+                        // Because of that, once on_evict returns, we'll check take the lock again
+                        // in the next loop iteration and check again if we now have enough space.
                         std::mem::drop(entries);
                         locked
                     };

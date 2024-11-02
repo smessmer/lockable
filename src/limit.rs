@@ -126,11 +126,15 @@ where
         /// this [AsyncLimit] set, the `on_evict` callback will be called.
         max_entries: NonZeroUsize,
         /// This callback will be called if `max_entries` is exceeded. It will be passed a list of guards for entries
-        /// and it will be expected to delete those entries from the [LockableHashMap](crate::LockableHashMap) or
-        /// [LockableLruCache](crate::LockableLruCache) using [Guard::remove]. This callback can also do any operations
-        /// you need to clean up or flush data from those entries before you delete them. It is `async` and can do
-        /// asynchronous operations in its implementation.
+        /// and it can be used to clean up or flush data from those entries. Afterwards, these entries will be removed
+        /// from the [LockableHashMap](crate::LockableHashMap) or [LockableLruCache](crate::LockableLruCache).
+        ///
+        /// It is `async` and can do asynchronous operations in its implementation.
+        ///
+        /// It is possible for some of the guards to have `None` values when the entry was removed concurrently by
+        /// another thread while we are trying to evict it.
         on_evict: OnEvictFn,
+        // TODO Once Rust has async drop, user code should do this in V::drop and we should remove `on_evict`.
     },
 }
 
