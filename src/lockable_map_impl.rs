@@ -443,6 +443,8 @@ where
     }
 
     pub(super) fn _unlock(&self, key: &M::K, mut guard: OwnedMutexGuard<EntryValue<M::V>>) {
+        // We need to get the `entries` lock before we drop the guard, see comment in [Self::_delete_if_unlocked_and_nobody_waiting_for_lock]
+        // about other threads not being able to enter this function.
         let mut entries = self._entries();
         self.hooks.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
@@ -454,7 +456,7 @@ where
         // they will be unblocked now and their guard will be created.
 
         // If the guard we dropped carried a value, keep the entry in the map.
-        // But it doesn't carry a value, clean up since the entry semantically
+        // But if it doesn't carry a value, clean up since the entry semantically
         // doesn't exist in the map and was only created to have a place to put
         // the mutex.
         if !entry_carries_a_value {
