@@ -480,6 +480,7 @@ where
         // Arc::strong_count() == 1, we know that there is no other thread with access
         // that could modify strong_count. We can clean up without race conditions.
         if Arc::strong_count(mutex) == 1 {
+            // TODO Combine the `get` above and `remove` here into a single hashing operation, using the hash map's entry API
             let remove_result = entries.remove(key);
             assert!(
                 remove_result.is_some(),
