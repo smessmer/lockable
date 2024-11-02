@@ -134,7 +134,7 @@ where
         /// It is possible for some of the guards to have `None` values when the entry was removed concurrently by
         /// another thread while we are trying to evict it.
         on_evict: OnEvictFn,
-        // TODO Once Rust has async drop, user code should do this in V::drop and we should remove `on_evict`.
+        // TODO Once Rust has async drop, user code should do this in V::drop and we should remove `on_evict`. But we need to be careful that the entry stays locked while drop is running, so that user code doing a cache writeback can rely that no other thread tries to read it while it's written back.
     },
 }
 
