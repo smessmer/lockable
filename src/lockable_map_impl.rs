@@ -450,7 +450,7 @@ where
 
         // Now the guard is dropped and the lock for this key is unlocked.
         // If there are any other Self::blocking_lock/async_lock/try_lock()
-        // calls for this key already running and/ waiting for the mutex,
+        // calls for this key already running and waiting for the mutex,
         // they will be unblocked now and their guard will be created.
 
         // If the guard we dropped carried a value, keep the entry in the map.
