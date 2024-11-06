@@ -61,7 +61,6 @@ where
 
     _k: PhantomData<K>,
     _v: PhantomData<V>,
-    _c: PhantomData<C>,
 }
 
 enum LoadOrInsertMutexResult<V> {
@@ -86,7 +85,6 @@ where
             config,
             _k: PhantomData,
             _v: PhantomData,
-            _c: PhantomData,
         }
     }
 
