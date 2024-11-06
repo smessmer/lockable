@@ -6,10 +6,11 @@
 //      - and make sure that we also test eviction order
 
 use crate::guard::TryInsertError;
-use crate::lockable_map_impl::LockableMapImpl;
+use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::Borrow;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::time::{Duration, Instant};
 
 /// Asserts that both vectors have the same entries but they may have a different order
@@ -49,14 +50,14 @@ pub(crate) trait Guard<K, V> {
     fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>>;
     fn remove(&mut self) -> Option<V>;
 }
-impl<M, V, H, P> Guard<M::K, V> for crate::guard::Guard<M, V, H, P>
+impl<M, K, V, C, P> Guard<K, V> for crate::guard::Guard<M, K, V, C, P>
 where
-    M: ArcMutexMapLike,
-    H: crate::hooks::Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + crate::lockable_map_impl::FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
-    fn key(&self) -> &M::K {
+    fn key(&self) -> &K {
         crate::guard::Guard::key(self)
     }
     fn value(&self) -> Option<&V> {

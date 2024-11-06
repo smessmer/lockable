@@ -1,11 +1,11 @@
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::Borrow;
 use std::future::Future;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
 use crate::guard::Guard;
-use crate::hooks::Hooks;
-use crate::lockable_map_impl::{FromInto, LockableMapImpl};
+use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
 use crate::map_like::ArcMutexMapLike;
 use crate::utils::never::Never;
 
@@ -71,14 +71,14 @@ use crate::utils::never::Never;
 /// assert!(evicted.borrow().contains(&4));
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
-pub enum AsyncLimit<M, V, H, P, E, F, OnEvictFn>
+pub enum AsyncLimit<M, K, V, C, P, E, F, OnEvictFn>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
     F: Future<Output = Result<(), E>>,
-    OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> F,
+    OnEvictFn: FnMut(Vec<Guard<M, K, V, C, P>>) -> F,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -89,9 +89,11 @@ where
         #[doc(hidden)]
         _m: PhantomData<M>,
         #[doc(hidden)]
+        _k: PhantomData<K>,
+        #[doc(hidden)]
         _v: PhantomData<V>,
         #[doc(hidden)]
-        _h: PhantomData<H>,
+        _c: PhantomData<C>,
         #[doc(hidden)]
         _p: PhantomData<P>,
         #[doc(hidden)]
@@ -138,21 +140,22 @@ where
     },
 }
 
-impl<M, V, H, P>
+impl<M, K, V, C, P>
     AsyncLimit<
         M,
+        K,
         V,
-        H,
+        C,
         P,
         Never,
         std::future::Ready<Result<(), Never>>,
-        fn(Vec<Guard<M, V, H, P>>) -> std::future::Ready<Result<(), Never>>,
+        fn(Vec<Guard<M, K, V, C, P>>) -> std::future::Ready<Result<(), Never>>,
     >
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
     /// See [AsyncLimit::NoLimit]. This helper function can be used
     /// to create an instance of [AsyncLimit::NoLimit] without having
@@ -160,8 +163,9 @@ where
     pub fn no_limit() -> Self {
         Self::NoLimit {
             _m: PhantomData,
+            _k: PhantomData,
             _v: PhantomData,
-            _h: PhantomData,
+            _c: PhantomData,
             _p: PhantomData,
             _o: PhantomData,
         }
@@ -227,13 +231,13 @@ where
 /// assert!(evicted.contains(&4));
 /// # Ok::<(), lockable::Never>(())})().unwrap();
 /// ```
-pub enum SyncLimit<M, V, H, P, E, OnEvictFn>
+pub enum SyncLimit<M, K, V, C, P, E, OnEvictFn>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
-    OnEvictFn: FnMut(Vec<Guard<M, V, H, P>>) -> Result<(), E>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    OnEvictFn: FnMut(Vec<Guard<M, K, V, C, P>>) -> Result<(), E>,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -244,9 +248,11 @@ where
         #[doc(hidden)]
         _m: PhantomData<M>,
         #[doc(hidden)]
+        _k: PhantomData<K>,
+        #[doc(hidden)]
         _v: PhantomData<V>,
         #[doc(hidden)]
-        _h: PhantomData<H>,
+        _c: PhantomData<C>,
         #[doc(hidden)]
         _p: PhantomData<P>,
         #[doc(hidden)]
@@ -290,12 +296,13 @@ where
     },
 }
 
-impl<M, V, H, P> SyncLimit<M, V, H, P, Never, fn(Vec<Guard<M, V, H, P>>) -> Result<(), Never>>
+impl<M, K, V, C, P>
+    SyncLimit<M, K, V, C, P, Never, fn(Vec<Guard<M, K, V, C, P>>) -> Result<(), Never>>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
     /// See [SyncLimit::NoLimit]. This helper function can be used
     /// to create an instance of [SyncLimit::NoLimit] without having
@@ -303,8 +310,9 @@ where
     pub fn no_limit() -> Self {
         Self::NoLimit {
             _m: PhantomData,
+            _k: PhantomData,
             _v: PhantomData,
-            _h: PhantomData,
+            _c: PhantomData,
             _p: PhantomData,
             _o: PhantomData,
         }

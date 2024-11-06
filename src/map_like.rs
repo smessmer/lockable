@@ -20,24 +20,25 @@ pub enum GetOrInsertNoneResult<V> {
 /// [ArcMutexMapLike] needs to be implemented for each kind of map we want to support, e.g.
 /// for [LruCache] and [HashMap]. This is the basis for that map becoming usable in a [LockableMapImpl]
 /// instance.
-pub trait ArcMutexMapLike: IntoIterator<Item = (Self::K, Entry<Self::V>)> {
-    type K: Eq + PartialEq + Hash + Clone;
-    type V;
-    type ItemIter<'a>: Iterator<Item = (&'a Self::K, &'a Entry<Self::V>)>
+pub trait ArcMutexMapLike<K, V>: IntoIterator<Item = (K, Entry<V>)>
+where
+    K: Eq + PartialEq + Hash + Clone,
+{
+    type ItemIter<'a>: Iterator<Item = (&'a K, &'a Entry<V>)>
     where
         Self: 'a,
-        Self::K: 'a,
-        Self::V: 'a;
+        K: 'a,
+        V: 'a;
 
     fn new() -> Self;
 
     fn len(&self) -> usize;
 
-    fn get_or_insert_none(&mut self, key: &Self::K) -> GetOrInsertNoneResult<Entry<Self::V>>;
+    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Entry<V>>;
 
-    fn get(&mut self, key: &Self::K) -> Option<&Entry<Self::V>>;
+    fn get(&mut self, key: &K) -> Option<&Entry<V>>;
 
-    fn remove(&mut self, key: &Self::K) -> Option<Entry<Self::V>>;
+    fn remove(&mut self, key: &K) -> Option<Entry<V>>;
 
     fn iter(&self) -> Self::ItemIter<'_>;
 }

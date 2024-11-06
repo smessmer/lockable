@@ -8,21 +8,19 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::guard::Guard;
-use super::hooks::NoopHooks;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
 use super::lockable_trait::Lockable;
 use super::map_like::{ArcMutexMapLike, EntryValue};
+use crate::lockable_map_impl::LockableMapConfig;
 use crate::map_like::GetOrInsertNoneResult;
 
 type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
 
-impl<K, V> ArcMutexMapLike for MapImpl<K, V>
+impl<K, V> ArcMutexMapLike<K, V> for MapImpl<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type K = K;
-    type V = V;
     type ItemIter<'a> = std::collections::hash_map::Iter<'a, K, Arc<Mutex<EntryValue<V>>>>
     where
         K: 'a,
@@ -36,10 +34,7 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(
-        &mut self,
-        key: &Self::K,
-    ) -> GetOrInsertNoneResult<Arc<Mutex<EntryValue<Self::V>>>> {
+    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Arc<Mutex<EntryValue<V>>>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
         //      Might be possible with the upcoming RawEntry API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
@@ -53,16 +48,39 @@ where
         }
     }
 
-    fn get(&mut self, key: &Self::K) -> Option<&Arc<Mutex<EntryValue<Self::V>>>> {
+    fn get(&mut self, key: &K) -> Option<&Arc<Mutex<EntryValue<V>>>> {
         HashMap::get(self, key)
     }
 
-    fn remove(&mut self, key: &Self::K) -> Option<Arc<Mutex<EntryValue<Self::V>>>> {
+    fn remove(&mut self, key: &K) -> Option<Arc<Mutex<EntryValue<V>>>> {
         self.remove(key)
     }
 
     fn iter(&self) -> Self::ItemIter<'_> {
         HashMap::iter(self)
+    }
+}
+
+#[derive(Clone)]
+pub struct LockableHashMapConfig;
+
+impl LockableMapConfig for LockableHashMapConfig {
+    type WrappedV<V> = V;
+
+    fn borrow_value<V>(v: &V) -> &V {
+        v
+    }
+    fn borrow_value_mut<V>(v: &mut V) -> &mut V {
+        v
+    }
+    fn wrap_value<V>(&self, v: V) -> V {
+        v
+    }
+    fn unwrap_value<V>(v: V) -> V {
+        v
+    }
+    fn on_unlock<V>(&self, _v: Option<&mut V>) {
+        // no-op
     }
 }
 
@@ -161,7 +179,7 @@ pub struct LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    map_impl: LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+    map_impl: LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
 }
 
 impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
@@ -170,20 +188,22 @@ where
 {
     type Guard<'a> = Guard<
         MapImpl<K, V>,
+        K,
         V,
-        NoopHooks,
-        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+        LockableHashMapConfig,
+        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
     > where
         K: 'a,
         V: 'a;
 
-    type OwnedGuard = Guard<MapImpl<K, V>, V, NoopHooks, Arc<LockableHashMap<K, V>>>;
+    type OwnedGuard = Guard<MapImpl<K, V>, K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
 
     type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
         MapImpl<K, V>,
+        K,
         V,
-        NoopHooks,
-        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+        LockableHashMapConfig,
+        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
         E,
         OnEvictFn,
     > where
@@ -193,8 +213,9 @@ where
 
     type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
         MapImpl<K, V>,
+        K,
         V,
-        NoopHooks,
+        LockableHashMapConfig,
         Arc<LockableHashMap<K, V>>,
         E,
         OnEvictFn,
@@ -203,9 +224,10 @@ where
 
     type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
         MapImpl<K, V>,
+        K,
         V,
-        NoopHooks,
-        &'a LockableMapImpl<MapImpl<K, V>, V, NoopHooks>,
+        LockableHashMapConfig,
+        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
         E,
         F,
         OnEvictFn,
@@ -217,8 +239,9 @@ where
 
     type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
         MapImpl<K, V>,
+        K,
         V,
-        NoopHooks,
+        LockableHashMapConfig,
         Arc<LockableHashMap<K, V>>,
         E,
         F,
@@ -247,7 +270,7 @@ where
     #[inline]
     pub fn new() -> Self {
         Self {
-            map_impl: LockableMapImpl::new(),
+            map_impl: LockableMapImpl::new(LockableHashMapConfig),
         }
     }
 
@@ -832,11 +855,12 @@ where
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, V, NoopHooks>> for Arc<LockableHashMap<K, V>>
+impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>>
+    for Arc<LockableHashMap<K, V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, V, NoopHooks> {
+    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig> {
         &self.map_impl
     }
 }

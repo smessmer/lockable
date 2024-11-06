@@ -110,7 +110,6 @@
 #![allow(rustdoc::redundant_explicit_links)]
 
 mod guard;
-mod hooks;
 mod limit;
 mod lockable_map_impl;
 mod lockable_trait;

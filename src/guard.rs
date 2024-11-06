@@ -1,56 +1,60 @@
 use derive_more::{Display, Error};
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::Borrow;
 use std::fmt::{self, Debug};
+use std::hash::Hash;
 use std::marker::PhantomData;
 use tokio::sync::OwnedMutexGuard;
 
-use super::hooks::Hooks;
-use super::lockable_map_impl::{FromInto, LockableMapImpl};
+use crate::lockable_map_impl::LockableMapConfig;
+
+use super::lockable_map_impl::LockableMapImpl;
 use super::map_like::{ArcMutexMapLike, EntryValue};
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
-pub struct Guard<M, V, H, P>
+pub struct Guard<M, K, V, C, P>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
     map: P,
-    key: M::K,
+    key: K,
     // Invariant: Is always Some(OwnedMutexGuard) unless in the middle of destruction
-    guard: Option<OwnedMutexGuard<EntryValue<M::V>>>,
-    _hooks: PhantomData<H>,
+    guard: Option<OwnedMutexGuard<EntryValue<C::WrappedV<V>>>>,
+    _m: PhantomData<M>,
+    _c: PhantomData<C>,
     _v: PhantomData<V>,
 }
 
-impl<M, V, H, P> Guard<M, V, H, P>
+impl<M, K, V, C, P> Guard<M, K, V, C, P>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
-    pub(super) fn new(map: P, key: M::K, guard: OwnedMutexGuard<EntryValue<M::V>>) -> Self {
+    pub(super) fn new(map: P, key: K, guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>) -> Self {
         Self {
             map,
             key,
             guard: Some(guard),
-            _hooks: PhantomData,
+            _m: PhantomData,
+            _c: PhantomData,
             _v: PhantomData,
         }
     }
 
     #[inline]
-    fn _guard(&self) -> &OwnedMutexGuard<EntryValue<M::V>> {
+    fn _guard(&self) -> &OwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
         self.guard
             .as_ref()
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
     #[inline]
-    fn _guard_mut(&mut self) -> &mut OwnedMutexGuard<EntryValue<M::V>> {
+    fn _guard_mut(&mut self) -> &mut OwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
         self.guard
             .as_mut()
             .expect("The self.guard field must always be set unless this was already destructed")
@@ -71,12 +75,12 @@ where
     /// # Ok::<(), lockable::Never>(())}).unwrap();
     /// ```
     #[inline]
-    pub fn key(&self) -> &M::K {
+    pub fn key(&self) -> &K {
         &self.key
     }
 
     #[inline]
-    pub(super) fn value_raw(&self) -> Option<&M::V> {
+    pub(super) fn value_raw(&self) -> Option<&C::WrappedV<V>> {
         self._guard().value.as_ref()
     }
 
@@ -114,7 +118,7 @@ where
         // We're returning Option<&V> instead of &Option<V> so that
         // user code can't change the Option from None to Some or the other
         // way round. They should use Self::insert() and Self::remove() for that.
-        self.value_raw().map(|v| v.borrow())
+        self.value_raw().map(C::borrow_value)
     }
 
     /// Returns the value of the entry that was locked with this guard.
@@ -157,7 +161,7 @@ where
         // We're returning Option<&M::V> instead of &Option<M::V> so that
         // user code can't change the Option from None to Some or the other
         // way round. They should use Self::insert() and Self::remove() for that.
-        self._guard_mut().value.as_mut().map(|v| v.borrow_mut())
+        self._guard_mut().value.as_mut().map(C::borrow_value_mut)
     }
 
     /// Removes the entry this guard has locked from the map.
@@ -198,7 +202,7 @@ where
     pub fn remove(&mut self) -> Option<V> {
         // Setting this to None will cause Lockable::_unlock() to remove it
         let removed_value = self._guard_mut().value.take();
-        removed_value.map(|v| v.fi_into())
+        removed_value.map(C::unwrap_value)
     }
 
     /// Inserts a value for the entry this guard has locked to the map.
@@ -232,9 +236,9 @@ where
     /// ```
     #[inline]
     pub fn insert(&mut self, value: V) -> Option<V> {
-        let new_value = M::V::fi_from(value, self.map.borrow().hooks());
+        let new_value = self.map.borrow().config().wrap_value(value);
         let old_value = self._guard_mut().value.replace(new_value);
-        old_value.map(|v| v.fi_into())
+        old_value.map(C::unwrap_value)
     }
 
     /// Inserts a value for the entry this guard has locked to the map if it didn't exist yet.
@@ -267,16 +271,14 @@ where
     /// ```
     #[inline]
     pub fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>> {
-        let hooks = self.map.borrow().hooks().clone();
+        let config = self.map.borrow().config().clone();
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            let new_value = M::V::fi_from(value, &hooks);
+            let new_value = config.wrap_value(value);
             guard.value = Some(new_value);
-            Ok(&mut *guard
-                .value
-                .as_mut()
-                .expect("We just created this item")
-                .borrow_mut())
+            Ok(C::borrow_value_mut(
+                &mut *guard.value.as_mut().expect("We just created this item"),
+            ))
         } else {
             Err(TryInsertError::AlreadyExists { value })
         }
@@ -313,17 +315,18 @@ where
     /// ```
     #[inline]
     pub fn value_or_insert_with(&mut self, value_fn: impl FnOnce() -> V) -> &mut V {
-        let hooks = self.map.borrow().hooks().clone();
+        let config = self.map.borrow().config().clone();
         let guard = self._guard_mut();
         if guard.value.is_none() {
-            let new_value = M::V::fi_from(value_fn(), &hooks);
+            let new_value = config.wrap_value(value_fn());
             guard.value = Some(new_value);
         }
-        &mut *guard
-            .value
-            .as_mut()
-            .expect("We just created this item if it didn't already exist")
-            .borrow_mut()
+        C::borrow_value_mut(
+            &mut *guard
+                .value
+                .as_mut()
+                .expect("We just created this item if it didn't already exist"),
+        )
     }
 
     /// Returns a mutable reference to the value of the entry this guard has locked.
@@ -361,12 +364,12 @@ where
     }
 }
 
-impl<M, V, H, P> Drop for Guard<M, V, H, P>
+impl<M, K, V, C, P> Drop for Guard<M, K, V, C, P>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
     fn drop(&mut self) {
         let guard = self
@@ -377,13 +380,12 @@ where
     }
 }
 
-impl<M, V, H, P> Debug for Guard<M, V, H, P>
+impl<M, K, V, C, P> Debug for Guard<M, K, V, C, P>
 where
-    M: ArcMutexMapLike,
-    H: Hooks<M::V>,
-    M::K: Debug,
-    M::V: Borrow<V> + BorrowMut<V> + FromInto<V, H>,
-    P: Borrow<LockableMapImpl<M, V, H>>,
+    K: Eq + PartialEq + Hash + Clone + Debug,
+    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    C: LockableMapConfig + Clone,
+    P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Guard({:?})", self.key)
