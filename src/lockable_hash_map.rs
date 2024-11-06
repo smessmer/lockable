@@ -1,6 +1,6 @@
 use futures::stream::Stream;
 use std::borrow::Borrow;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::hash_map::{self, HashMap};
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
@@ -11,17 +11,15 @@ use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
 use super::lockable_trait::Lockable;
-use super::map_like::{ArcMutexMapLike, EntryValue};
-use crate::lockable_map_impl::LockableMapConfig;
+use super::map_like::MapLike;
+use crate::lockable_map_impl::{Entry, EntryValue, LockableMapConfig};
 use crate::map_like::GetOrInsertNoneResult;
 
-type MapImpl<K, V> = HashMap<K, Arc<tokio::sync::Mutex<EntryValue<V>>>>;
-
-impl<K, V> ArcMutexMapLike<K, V> for MapImpl<K, V>
+impl<K, V> MapLike<K, Entry<V>> for HashMap<K, Entry<V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type ItemIter<'a> = std::collections::hash_map::Iter<'a, K, Arc<Mutex<EntryValue<V>>>>
+    type ItemIter<'a> = std::collections::hash_map::Iter<'a, K, Entry<V>>
     where
         K: 'a,
         V: 'a;
@@ -34,13 +32,15 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Arc<Mutex<EntryValue<V>>>> {
+    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Entry<V>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
         //      Might be possible with the upcoming RawEntry API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
         match self.entry(key.clone()) {
-            Entry::Occupied(entry) => GetOrInsertNoneResult::Existing(Arc::clone(entry.get())),
-            Entry::Vacant(entry) => {
+            hash_map::Entry::Occupied(entry) => {
+                GetOrInsertNoneResult::Existing(Arc::clone(entry.get()))
+            }
+            hash_map::Entry::Vacant(entry) => {
                 let value = Arc::new(Mutex::new(EntryValue { value: None }));
                 entry.insert(Arc::clone(&value));
                 GetOrInsertNoneResult::Inserted(value)
@@ -179,7 +179,7 @@ pub struct LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    map_impl: LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
+    map_impl: LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
 }
 
 impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
@@ -187,23 +187,24 @@ where
     K: Eq + PartialEq + Hash + Clone,
 {
     type Guard<'a> = Guard<
-        MapImpl<K, V>,
+        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
     > where
         K: 'a,
         V: 'a;
 
-    type OwnedGuard = Guard<MapImpl<K, V>, K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
+    type OwnedGuard =
+        Guard<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
 
     type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
-        MapImpl<K, V>,
+        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
         E,
         OnEvictFn,
     > where
@@ -212,7 +213,7 @@ where
         V: 'a;
 
     type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
-        MapImpl<K, V>,
+        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
@@ -223,11 +224,11 @@ where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
     type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
-        MapImpl<K, V>,
+        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
         E,
         F,
         OnEvictFn,
@@ -238,7 +239,7 @@ where
         V: 'a;
 
     type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
-        MapImpl<K, V>,
+        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
@@ -855,12 +856,12 @@ where
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V> Borrow<LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig>>
+impl<K, V> Borrow<LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>>
     for Arc<LockableHashMap<K, V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    fn borrow(&self) -> &LockableMapImpl<MapImpl<K, V>, K, V, LockableHashMapConfig> {
+    fn borrow(&self) -> &LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig> {
         &self.map_impl
     }
 }

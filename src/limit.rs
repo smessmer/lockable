@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
 use crate::guard::Guard;
-use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
-use crate::map_like::ArcMutexMapLike;
+use crate::lockable_map_impl::{Entry, LockableMapConfig, LockableMapImpl};
+use crate::map_like::MapLike;
 use crate::utils::never::Never;
 
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
@@ -74,7 +74,7 @@ use crate::utils::never::Never;
 pub enum AsyncLimit<M, K, V, C, P, E, F, OnEvictFn>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<M, K, V, C>>,
     F: Future<Output = Result<(), E>>,
@@ -153,7 +153,7 @@ impl<M, K, V, C, P>
     >
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<M, K, V, C>>,
 {
@@ -234,7 +234,7 @@ where
 pub enum SyncLimit<M, K, V, C, P, E, OnEvictFn>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<M, K, V, C>>,
     OnEvictFn: FnMut(Vec<Guard<M, K, V, C, P>>) -> Result<(), E>,
@@ -300,7 +300,7 @@ impl<M, K, V, C, P>
     SyncLimit<M, K, V, C, P, Never, fn(Vec<Guard<M, K, V, C, P>>) -> Result<(), Never>>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<M, K, V, C>>,
 {

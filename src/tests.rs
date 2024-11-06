@@ -6,8 +6,8 @@
 //      - and make sure that we also test eviction order
 
 use crate::guard::TryInsertError;
-use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
-use crate::map_like::ArcMutexMapLike;
+use crate::lockable_map_impl::{Entry, LockableMapConfig, LockableMapImpl};
+use crate::map_like::MapLike;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -53,7 +53,7 @@ pub(crate) trait Guard<K, V> {
 impl<M, K, V, C, P> Guard<K, V> for crate::guard::Guard<M, K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<M, K, V, C>>,
 {

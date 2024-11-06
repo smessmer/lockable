@@ -10,7 +10,7 @@ use tokio::sync::OwnedMutexGuard;
 
 use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
-use super::map_like::{ArcMutexMapLike, EntryValue, GetOrInsertNoneResult};
+use super::map_like::{GetOrInsertNoneResult, MapLike};
 
 pub trait LockableMapConfig {
     type WrappedV<V>;
@@ -27,10 +27,19 @@ pub trait LockableMapConfig {
     fn on_unlock<V>(&self, v: Option<&mut Self::WrappedV<V>>);
 }
 
+#[derive(Debug)]
+pub struct EntryValue<V> {
+    // While unlocked, an entry is always Some. While locked, it can be temporarily None
+    // since we enter None values into the map to lock keys that actually don't exist in the map.
+    pub(super) value: Option<V>,
+}
+
+pub(super) type Entry<V> = Arc<tokio::sync::Mutex<EntryValue<V>>>;
+
 pub struct LockableMapImpl<M, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     // We always use std::sync::Mutex for protecting the whole map since its guards
@@ -67,7 +76,7 @@ enum LoadOrInsertMutexResult<V> {
 impl<M, K, V, C> LockableMapImpl<M, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     #[inline]
@@ -567,7 +576,7 @@ where
 impl<M, K, V, C> Debug for LockableMapImpl<M, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: ArcMutexMapLike<K, C::WrappedV<V>>,
+    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
