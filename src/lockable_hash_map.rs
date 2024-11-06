@@ -48,11 +48,11 @@ where
         }
     }
 
-    fn get(&mut self, key: &K) -> Option<&Arc<Mutex<EntryValue<V>>>> {
+    fn get(&mut self, key: &K) -> Option<&Entry<V>> {
         HashMap::get(self, key)
     }
 
-    fn remove(&mut self, key: &K) -> Option<Arc<Mutex<EntryValue<V>>>> {
+    fn remove(&mut self, key: &K) -> Option<Entry<V>> {
         self.remove(key)
     }
 

@@ -65,10 +65,10 @@ where
 
 enum LoadOrInsertMutexResult<V> {
     Existing {
-        mutex: Arc<tokio::sync::Mutex<V>>,
+        mutex: Entry<V>,
     },
     Inserted {
-        guard: tokio::sync::OwnedMutexGuard<V>,
+        guard: tokio::sync::OwnedMutexGuard<EntryValue<V>>,
     },
 }
 
@@ -114,7 +114,7 @@ where
         this: &S,
         key: &K,
         limit: AsyncLimit<M, K, V, C, S, E, F, OnEvictFn>,
-    ) -> Result<LoadOrInsertMutexResult<EntryValue<C::WrappedV<V>>>, E>
+    ) -> Result<LoadOrInsertMutexResult<C::WrappedV<V>>, E>
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
@@ -199,7 +199,7 @@ where
         this: &S,
         key: &K,
         limit: SyncLimit<M, K, V, C, S, E, OnEvictFn>,
-    ) -> Result<LoadOrInsertMutexResult<EntryValue<C::WrappedV<V>>>, E>
+    ) -> Result<LoadOrInsertMutexResult<C::WrappedV<V>>, E>
     where
         S: Borrow<Self> + Clone,
         OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> Result<(), E>,
@@ -477,7 +477,7 @@ where
         entries: &mut std::sync::MutexGuard<'_, M>,
         key: &K,
     ) {
-        let mutex: &Arc<tokio::sync::Mutex<EntryValue<C::WrappedV<V>>>> = entries
+        let mutex: &Entry<C::WrappedV<V>> = entries
             .get(key)
             .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
         // If there are any other locks or any other tasks currently waiting in Self::blocking_lock/async_lock/try_lock,
