@@ -16,7 +16,7 @@ use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::lockable_map_impl::LockableMapImpl;
 use super::lockable_trait::Lockable;
-use super::map_like::{MapLike, GetOrInsertNoneResult};
+use super::map_like::{GetOrInsertNoneResult, MapLike};
 use super::utils::time::{RealTime, TimeProvider};
 
 // The MapLike implementation here allows LockableMapImpl to
@@ -38,10 +38,7 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(
-        &mut self,
-        key: &K,
-    ) -> GetOrInsertNoneResult<Entry<V>> {
+    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Entry<V>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
         //      Might be possible with a RawEntry-like API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
@@ -49,7 +46,8 @@ where
         let mut was_inserted = false;
         let entry = self.get_or_insert(key.clone(), || {
             was_inserted = true;
-            PrimaryArc::new(Mutex::new(EntryValue { value: None }))});
+            PrimaryArc::new(Mutex::new(EntryValue { value: None }))
+        });
         if was_inserted {
             GetOrInsertNoneResult::Inserted(entry)
         } else {
@@ -71,12 +69,16 @@ where
 }
 
 pub struct LockableLruCacheConfig<Time>
-where Time: TimeProvider + Clone {
+where
+    Time: TimeProvider + Clone,
+{
     time_provider: Time,
 }
 
-impl <Time> Clone for LockableLruCacheConfig<Time>
-where Time: TimeProvider + Clone {
+impl<Time> Clone for LockableLruCacheConfig<Time>
+where
+    Time: TimeProvider + Clone,
+{
     fn clone(&self) -> Self {
         Self {
             time_provider: self.time_provider.clone(),
@@ -247,12 +249,7 @@ where
         V: 'a,
         Time: 'a;
 
-    type OwnedGuard = Guard<
-        K,
-        V,
-        LockableLruCacheConfig<Time>,
-        Arc<LockableLruCache<K, V, Time>>,
-    >;
+    type OwnedGuard = Guard<K, V, LockableLruCacheConfig<Time>, Arc<LockableLruCache<K, V, Time>>>;
 
     type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
         K,
@@ -293,7 +290,7 @@ where
         Time: 'a;
 
     type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
-        K, 
+        K,
         V,
         LockableLruCacheConfig<Time>,
         Arc<LockableLruCache<K, V, Time>>,
