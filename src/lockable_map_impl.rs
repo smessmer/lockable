@@ -13,6 +13,8 @@ use super::map_like::{GetOrInsertNoneResult, MapLike};
 use super::utils::primary_arc::PrimaryArc;
 use crate::utils::primary_arc::{ReplicaArc, ReplicaOwnedMutexGuard};
 
+// TODO Does it make sense to make the inner Mutex (i.e. tokio::sync::Mutex) a template parameter with a Mutex trait? It could allow user code to select std::sync::Mutex if they don't need the async_lock functions, or maybe even use their own mutex type if we make the trait public.
+
 pub trait LockableMapConfig {
     type MapImpl<K, V>: MapLike<K, Entry<Self::WrappedV<V>>>
     where
