@@ -64,7 +64,7 @@ where
     //          However, while holding a [ReplicaArc], other threads can come in, lock `entries`, and create their own [ReplicaArc] to the same entry.
     //      2B) Code creating a new `None` [PrimaryArc] in the map must always create a [ReplicaArc]/[ReplicaOwnedMutexGuard] for it.
     //      2C) Anybody dropping a [ReplicaArc]/[ReplicaOwnedMutexGuard] must first get a lock on `entries`, then drop the ReplicaArc, then, if it is None,
-    //          call [Self::_delete_if_unlocked_and_nobody_waiting_for_lock] or [Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock] to clean up the `None` entry.
+    //          call [Self::_delete_if_unlocked_and_nobody_waiting_for_lock] or [Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock] to clean up the `None` entry.
     //          The easiest way to do this is to put the [ReplicaArg] into a [Guard] object that will do this correctly in its [Drop].
     //          Exception: If the same lock on `entries` that was present when the [ReplicaArc] was created is still held, i.e. no other thread could have dropped their instance of the [ReplicaArc] inbetween, then it's ok to just drop it without any `None` checks.
     //      (2C) means that it isn't necessarily the [ReplicaArc] created in (2B) that will clean up the `None` entry, since there could still be other [ReplicaArc]s, but the last [ReplicaArc] will clean it up.
@@ -203,9 +203,11 @@ where
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. To fulfill invariant 2B, we need to put it in a [ReplicaOwnedMutexGuard].
                 // The call site needs to make sure it fulfills invariant 2C when dropping that [ReplicaOwnedMutexGuard].
-                let guard = PrimaryArc::clone(mutex).try_lock_owned().expect(
-                    "We're the only one who has seen this mutex so far. Locking can't fail.",
-                );
+                let Ok(guard) = PrimaryArc::clone(mutex).try_lock_owned() else {
+                    panic!(
+                        "We're the only one who has seen this mutex so far. Locking can't fail."
+                    );
+                };
                 LoadOrInsertMutexResult::Inserted { guard }
             }
         };
@@ -290,9 +292,11 @@ where
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. To fulfill invariant 2B, we need to put it in a [ReplicaOwnedMutexGuard].
                 // The call site needs to make sure it fulfills invariant 2C when dropping that [ReplicaOwnedMutexGuard].
-                let guard = PrimaryArc::clone(mutex).try_lock_owned().expect(
-                    "We're the only one who has seen this mutex so far. Locking can't fail.",
-                );
+                let Ok(guard) = PrimaryArc::clone(mutex).try_lock_owned() else {
+                    panic!(
+                        "We're the only one who has seen this mutex so far. Locking can't fail."
+                    );
+                };
                 LoadOrInsertMutexResult::Inserted { guard }
             }
         };
@@ -374,11 +378,13 @@ where
                     // To fulfill invariant 2C, we immediately put the [ReplicaOwnedMutexGuard] into a [Guard] object.
                     Ok(Some(Self::_make_guard(this, key, guard)))
                 }
-                Err(_) => {
-                    // To fulfill invariant 2C, we need to call [Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock] here.
-                    Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock(
-                        &mut this.borrow()._entries(),
+                Err(replica_arc) => {
+                    // To fulfill invariant 2C, we need to call [Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock] here.
+                    let mut entries = this.borrow()._entries();
+                    Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock(
+                        &mut entries,
                         &key,
+                        replica_arc,
                     );
                     Ok(None)
                 }
@@ -411,11 +417,14 @@ where
                     // To fulfill invariant 2C, we immediately put the [ReplicaOwnedMutexGuard] into a [Guard] object.
                     Ok(Some(Self::_make_guard(this, key, guard)))
                 }
-                Err(_) => {
-                    // To fulfill invariant 2C, we need to call [Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock] here.
-                    Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock(
-                        &mut this.borrow()._entries(),
+                Err(replica_arc) => {
+                    // TODO Deduplicate this code with the try_lock method
+                    // To fulfill invariant 2C, we need to call [Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock] here.
+                    let mut entries = this.borrow()._entries();
+                    Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock(
+                        &mut entries,
                         &key,
+                        replica_arc,
                     );
                     Ok(None)
                 }
@@ -438,7 +447,7 @@ where
                 |(key, mutex)| match PrimaryArc::clone(mutex).try_lock_owned() {
                     Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
                     Err(_) => {
-                        // Just dropping the [ReplicaArc] here without calling [Self::_delete_if_exists_unlocked_none_and_nobody_waiting_for_lock] is fine
+                        // Just dropping the [ReplicaArc] here without calling [Self::_delete_if_unlocked_none_and_nobody_waiting_for_lock] is fine
                         // despite invariant 2C, because we hold a lock on `entries` and had that lock since the call to [PrimaryArc::clone].
                         None
                     }
@@ -538,7 +547,7 @@ where
     ) {
         let mutex: &Entry<C::WrappedV<V>> = entries
             .get(key)
-            .expect("This entry must exist or the guard passed in as a parameter shouldn't exist");
+            .expect("This entry must exist or this function shouldn't have been called");
         // We have a lock on `entries` and invariant 2A ensures that no other threads or tasks can currently
         // increase num_replicas (i.e. `Arc::strong_count`) or create clones of this Arc. This means that if num_replicas == 0,
         // we know that we are the only ones with a handle to this `Arc` and we can clean it up without race conditions.
@@ -557,31 +566,31 @@ where
         }
     }
 
-    fn _delete_if_exists_unlocked_none_and_nobody_waiting_for_lock(
+    fn _delete_if_unlocked_none_and_nobody_waiting_for_lock(
         entries: &mut EntriesGuard<'_, K, V, C>,
         key: &K,
+        entry: ReplicaArc<tokio::sync::Mutex<EntryValue<C::WrappedV<V>>>>,
     ) {
-        if let Some(mutex) = entries.get(key) {
-            // We have a lock on `entries` and invariant 2A ensures that no other threads or tasks can currently
-            // increase num_replicas (i.e. `Arc::strong_count`) or create clones of this Arc. This means that if num_replicas == 0,
-            // we know that we are the only ones with a handle to this `Arc` and we can clean it up without race conditions.
-            if mutex.num_replicas() == 0 {
-                if let Ok(value) = PrimaryArc::clone(mutex).try_lock() {
-                    if value.value.is_none() {
-                        // TODO Combine the `get` above and `remove` here into a single hashing operation, using the hash map's entry API
-                        let remove_result = entries.remove(key);
-                        assert!(
-                            remove_result.is_some(),
-                            "We just got this entry above from the hash map, it cannot have vanished since then"
-                        );
-                    }
-                }
-            } else {
-                // Another task or thread currently has a [ReplicaArc] for this entry, it may or may not be locked. We cannot clean up yet.
-                // With invariant 2C, we know that thread or task hasn't cleaned up yet but will wait for us to release the `entries`
-                // lock and then eventually call [Self::_delete_if_unlocked_and_nobody_waiting_for_lock] again.
-                // We can just exit and let them deal with it.
+        // We have a lock on `entries` and invariant 2A ensures that no other threads or tasks can currently
+        // increase num_replicas (i.e. `Arc::strong_count`) or create clones of this Arc. This means that if num_replicas == 1,
+        // we know that we are the only ones with a handle to this `Arc` and we can clean it up without race conditions.
+        if entry.num_replicas() == 1 {
+            let locked = entry
+                .try_lock()
+                .expect("We're the only one who has access to this mutex. Locking can't fail.");
+            if locked.value.is_none() {
+                // TODO Combine the `get` above and `remove` here into a single hashing operation, using the hash map's entry API
+                let remove_result = entries.remove(key);
+                assert!(
+                    remove_result.is_some(),
+                    "We just got this entry above from the hash map, it cannot have vanished since then"
+                );
             }
+        } else {
+            // Another task or thread currently has a [ReplicaArc] for this entry, it may or may not be locked. We cannot clean up yet.
+            // With invariant 2C, we know that thread or task hasn't cleaned up yet but will wait for us to release the `entries`
+            // lock and then eventually call [Self::_delete_if_unlocked_and_nobody_waiting_for_lock] again.
+            // We can just exit and let them deal with it.
         }
     }
 
@@ -643,7 +652,7 @@ where
                 // calling _unlock and potentially deleting an item if it is None. So we don't need
                 // to create a guard object here. Because we have a lock on `entries`, there are no
                 // race conditions with that _unlock.
-                // It's ok to just drop the [ReplicaArc] without calling _delete_if_exists_unlocked_none_and_nobody_waiting_for_lock
+                // It's ok to just drop the [ReplicaArc] without calling _delete_if_unlocked_none_and_nobody_waiting_for_lock
                 // because we have a lock on `entries` and had that lock since the call to [PrimaryArc::clone].
             }
             if result.len() >= num_entries {
@@ -708,9 +717,9 @@ where
     fn assert_invariant(entries: &C::MapImpl<K, V>) {
         for (_key, entry) in entries.iter() {
             if entry.num_replicas() == 0 {
-                let guard = PrimaryArc::clone(entry)
-                    .try_lock_owned()
-                    .expect("We're the only one with access, locking can't fail");
+                let Ok(guard) = PrimaryArc::clone(entry).try_lock_owned() else {
+                    panic!("We're the only one with access, locking can't fail");
+                };
                 assert!(
                     guard.value.is_some(),
                     "Invariant 2 violated. Found an entry without ReplicaArcs that is None."

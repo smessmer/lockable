@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use tokio::sync::{Mutex, OwnedMutexGuard, TryLockError};
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 /// A [PrimaryArc] is an [Arc] that can only be cloned from the [PrimaryArc] instance. Each clone will be a [ReplicaArc] that cannot be cloned further.
 pub struct PrimaryArc<T> {
@@ -40,6 +40,13 @@ pub struct ReplicaArc<T> {
     inner: Arc<T>,
 }
 
+impl<T> ReplicaArc<T> {
+    #[inline]
+    pub fn num_replicas(&self) -> usize {
+        Arc::strong_count(&self.inner) - 1
+    }
+}
+
 impl<T> Deref for ReplicaArc<T> {
     type Target = T;
 
@@ -59,16 +66,23 @@ impl<T> ReplicaArc<Mutex<T>> {
     }
 
     #[inline]
-    pub fn try_lock_owned(self) -> Result<ReplicaOwnedMutexGuard<T>, TryLockError> {
-        self.inner
-            .try_lock_owned()
-            .map(|inner| ReplicaOwnedMutexGuard { inner })
-    }
-
-    #[inline]
     pub fn blocking_lock_owned(self) -> ReplicaOwnedMutexGuard<T> {
         ReplicaOwnedMutexGuard {
             inner: self.inner.blocking_lock_owned(),
+        }
+    }
+
+    #[inline]
+    pub fn try_lock_owned(self) -> Result<ReplicaOwnedMutexGuard<T>, Self> {
+        // TODO This `Arc::clone` is violating our invariant. Even though we immediately drop it or ourselves, it's still a clone.
+        //      It's currently fine because all call sites make sure to call [LockableMapImpl::_delete_if_unlocked_none_and_nobody_waiting_for_lock],
+        //      so the `None` entry isn't left behind, but it still violates the invariant.
+
+        // This function is in `PrimaryArc` not `ReplicaArc` because it needs to call `Arc::clone`.
+        let locked = Arc::clone(&self.inner).try_lock_owned();
+        match locked {
+            Ok(inner) => Ok(ReplicaOwnedMutexGuard { inner }),
+            Err(_) => Err(self),
         }
     }
 }
