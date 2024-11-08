@@ -1,6 +1,6 @@
 [package]
 authors = ["Sebastian Messmer <messmer@cryfs.org>"]
-categories = ["asynchronous", "concurrency"]
+categories = ["asynchronous", "concurrency", "caching", "data-structures"]
 description = "This library offers hash map, hash set and cache data structures where individual entries can be locked"
 documentation = "https://docs.rs/lockable"
 rust-version = "1.75"
@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 name = "lockable"
 readme = "README.md"
 repository = "https://github.com/smessmer/lockable"
-version = "0.1.0"
+version = "0.1.1"
 
 [package.metadata.docs.rs]
 all-features = true
