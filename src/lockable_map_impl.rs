@@ -629,24 +629,29 @@ where
     ) -> Vec<Guard<K, V, C, S>> {
         let mut result = Vec::with_capacity(num_entries);
         for (key, mutex) in entries.iter() {
-            if let Ok(guard) = PrimaryArc::clone(mutex).try_lock_owned() {
-                if guard.value.is_some() {
-                    result.push(Self::_make_guard(this.clone(), key.clone(), guard))
-                } else {
-                    // We have not created this `None` entry and according to invariant 2, we know that there is
-                    // a [ReplicaArc] for it somewhere. Even though it seems to be unlocked, we know it exists.
-                    // Because we have a lock on `entries`, invariant 2C tells us that this [ReplicaArc]'s destruction
-                    // will wait for us before cleaning up the `None`.
-                    // We don't need to worry about cleaning up the `None` ourselves.
+            match PrimaryArc::clone(mutex).try_lock_owned() {
+                Ok(guard) => {
+                    if guard.value.is_some() {
+                        result.push(Self::_make_guard(this.clone(), key.clone(), guard))
+                    } else {
+                        // We have not created this `None` entry and according to invariant 2, we know that there is
+                        // a [ReplicaArc] for it somewhere. Even though it seems to be unlocked, we know it exists.
+                        // Because we have a lock on `entries`, invariant 2C tells us that this [ReplicaArc]'s destruction
+                        // will wait for us before cleaning up the `None`.
+                        // We don't need to worry about cleaning up the `None` ourselves.
+                        assert!(mutex.num_replicas() > 1, "Invariant violated");
+                    }
                 }
-            } else {
-                // Invariant 2C:
-                // A failed try_lock means we currently have another lock and we can rely on that one
-                // calling _unlock and potentially deleting an item if it is None. So we don't need
-                // to create a guard object here. Because we have a lock on `entries`, there are no
-                // race conditions with that _unlock.
-                // It's ok to just drop the [ReplicaArc] without calling _delete_if_unlocked_none_and_nobody_waiting_for_lock
-                // because we have a lock on `entries` and had that lock since the call to [PrimaryArc::clone].
+                Err(_replica_arc) => {
+                    // Invariant 2C:
+                    // A failed try_lock means we currently have another lock and we can rely on that one
+                    // calling _unlock and potentially deleting an item if it is None. So we don't need
+                    // to create a guard object here. Because we have a lock on `entries`, there are no
+                    // race conditions with that _unlock.
+                    // It's ok to just drop the [ReplicaArc] without calling _delete_if_unlocked_none_and_nobody_waiting_for_lock
+                    // because we have a lock on `entries` and had that lock since the call to [PrimaryArc::clone].
+                    assert!(mutex.num_replicas() > 1, "Invariant violated");
+                }
             }
             if result.len() >= num_entries {
                 break;
