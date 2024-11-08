@@ -92,8 +92,6 @@ where
         _c: PhantomData<C>,
         #[doc(hidden)]
         _p: PhantomData<P>,
-        #[doc(hidden)]
-        _o: PhantomData<OnEvictFn>,
     },
     /// Setting a [AsyncLimit::SoftLimit] for a locking call means that there is a limit on the number of entries.
     /// Entries that either have a value or that don't have a value but are currently locked count towards that limit,
@@ -160,7 +158,6 @@ where
             _v: PhantomData,
             _c: PhantomData,
             _p: PhantomData,
-            _o: PhantomData,
         }
     }
 }
@@ -245,8 +242,6 @@ where
         _c: PhantomData<C>,
         #[doc(hidden)]
         _p: PhantomData<P>,
-        #[doc(hidden)]
-        _o: PhantomData<OnEvictFn>,
     },
     /// Setting a [SyncLimit::SoftLimit] for a locking call means that there is a limit on the number of entries.
     /// Entries that either have a value or that don't have a value but are currently locked count towards that limit,
@@ -301,7 +296,6 @@ where
             _v: PhantomData,
             _c: PhantomData,
             _p: PhantomData,
-            _o: PhantomData,
         }
     }
 }
