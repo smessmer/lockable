@@ -18,7 +18,6 @@ impl Default for RealTime {
 }
 
 #[cfg(test)]
-#[cfg(feature = "lru")]
 #[allow(clippy::items_after_test_module)]
 mod mock_time {
     use super::*;
@@ -48,5 +47,4 @@ mod mock_time {
     }
 }
 #[cfg(test)]
-#[cfg(feature = "lru")]
 pub use mock_time::MockTime;
