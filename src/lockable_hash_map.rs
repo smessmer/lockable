@@ -14,6 +14,7 @@ use super::lockable_trait::Lockable;
 use super::map_like::MapLike;
 use crate::lockable_map_impl::{Entry, EntryValue, LockableMapConfig};
 use crate::map_like::GetOrInsertNoneResult;
+use crate::utils::primary_arc::PrimaryArc;
 
 impl<K, V> MapLike<K, Entry<V>> for HashMap<K, Entry<V>>
 where
@@ -37,13 +38,11 @@ where
         //      Might be possible with the upcoming RawEntry API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
         match self.entry(key.clone()) {
-            hash_map::Entry::Occupied(entry) => {
-                GetOrInsertNoneResult::Existing(Arc::clone(entry.get()))
-            }
+            hash_map::Entry::Occupied(entry) => GetOrInsertNoneResult::Existing(entry.into_mut()),
             hash_map::Entry::Vacant(entry) => {
-                let value = Arc::new(Mutex::new(EntryValue { value: None }));
-                entry.insert(Arc::clone(&value));
-                GetOrInsertNoneResult::Inserted(value)
+                let value = PrimaryArc::new(Mutex::new(EntryValue { value: None }));
+                let new_entry = entry.insert(value);
+                GetOrInsertNoneResult::Inserted(new_entry)
             }
         }
     }

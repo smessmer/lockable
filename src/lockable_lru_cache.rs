@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
 
 use crate::lockable_map_impl::{Entry, EntryValue, LockableMapConfig};
+use crate::utils::primary_arc::PrimaryArc;
 
 use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
@@ -41,16 +42,18 @@ where
         &mut self,
         key: &K,
     ) -> GetOrInsertNoneResult<Entry<V>> {
-        // TODO It might be faster to use [LruCache::get_or_insert] here, but that unfortunately doesn't report back whether the entry already existed.
-        //      Or use an `Entry` based API similar to the one offered by the standard library.
-        //      Or even better, `RawEntry` so we only have to clone the key if it doesn't already exist.
-        match self.get(key) {
-            Some(value) => GetOrInsertNoneResult::Existing(Arc::clone(value)),
-            None => {
-                let value = Arc::new(Mutex::new(EntryValue { value: None }));
-                self.put(key.clone(), Arc::clone(&value));
-                GetOrInsertNoneResult::Inserted(value)
-            }
+        // TODO Is there a way to only clone the key when the entry doesn't already exist?
+        //      Might be possible with a RawEntry-like API. If we do that, we may
+        //      even be able to remove the `Clone` bound from `K` everywhere in this library.
+        // TODO This bool is a bad workaround. We should find a better way.
+        let mut was_inserted = false;
+        let entry = self.get_or_insert(key.clone(), || {
+            was_inserted = true;
+            PrimaryArc::new(Mutex::new(EntryValue { value: None }))});
+        if was_inserted {
+            GetOrInsertNoneResult::Inserted(entry)
+        } else {
+            GetOrInsertNoneResult::Existing(entry)
         }
     }
 

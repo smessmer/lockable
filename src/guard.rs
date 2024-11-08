@@ -3,9 +3,9 @@ use std::borrow::Borrow;
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 use std::marker::PhantomData;
-use tokio::sync::OwnedMutexGuard;
 
 use crate::lockable_map_impl::{EntryValue, LockableMapConfig};
+use crate::utils::primary_arc::ReplicaOwnedMutexGuard;
 
 use super::lockable_map_impl::LockableMapImpl;
 
@@ -20,7 +20,7 @@ where
     map: P,
     key: K,
     // Invariant: Is always Some(OwnedMutexGuard) unless in the middle of destruction
-    guard: Option<OwnedMutexGuard<EntryValue<C::WrappedV<V>>>>,
+    guard: Option<ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>>>,
     _c: PhantomData<C>,
     _v: PhantomData<V>,
 }
@@ -31,7 +31,11 @@ where
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<K, V, C>>,
 {
-    pub(super) fn new(map: P, key: K, guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>) -> Self {
+    pub(super) fn new(
+        map: P,
+        key: K,
+        guard: ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
+    ) -> Self {
         Self {
             map,
             key,
@@ -42,14 +46,14 @@ where
     }
 
     #[inline]
-    fn _guard(&self) -> &OwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
+    fn _guard(&self) -> &ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
         self.guard
             .as_ref()
             .expect("The self.guard field must always be set unless this was already destructed")
     }
 
     #[inline]
-    fn _guard_mut(&mut self) -> &mut OwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
+    fn _guard_mut(&mut self) -> &mut ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>> {
         self.guard
             .as_mut()
             .expect("The self.guard field must always be set unless this was already destructed")

@@ -1,8 +1,8 @@
 use std::hash::Hash;
 
-pub enum GetOrInsertNoneResult<V> {
-    Existing(V),
-    Inserted(V),
+pub enum GetOrInsertNoneResult<'a, V> {
+    Existing(&'a V),
+    Inserted(&'a V),
 }
 
 /// [MapLike] needs to be implemented for each kind of map we want to support, e.g.
@@ -22,7 +22,7 @@ where
 
     fn len(&self) -> usize;
 
-    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<V>;
+    fn get_or_insert_none<'s, 'k>(&'s mut self, key: &'k K) -> GetOrInsertNoneResult<'s, V>;
 
     fn get(&mut self, key: &K) -> Option<&V>;
 

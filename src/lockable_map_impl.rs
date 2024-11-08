@@ -5,12 +5,13 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use tokio::sync::OwnedMutexGuard;
+
+use crate::utils::primary_arc::{ReplicaArc, ReplicaOwnedMutexGuard};
 
 use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{GetOrInsertNoneResult, MapLike};
+use super::utils::primary_arc::PrimaryArc;
 
 pub trait LockableMapConfig {
     type MapImpl<K, V>: MapLike<K, Entry<Self::WrappedV<V>>>
@@ -37,7 +38,7 @@ pub struct EntryValue<V> {
     pub(super) value: Option<V>,
 }
 
-pub(super) type Entry<V> = Arc<tokio::sync::Mutex<EntryValue<V>>>;
+pub(super) type Entry<V> = PrimaryArc<tokio::sync::Mutex<EntryValue<V>>>;
 
 pub struct LockableMapImpl<K, V, C>
 where
@@ -67,10 +68,10 @@ where
 
 enum LoadOrInsertMutexResult<V> {
     Existing {
-        mutex: Entry<V>,
+        mutex: ReplicaArc<tokio::sync::Mutex<EntryValue<V>>>,
     },
     Inserted {
-        guard: tokio::sync::OwnedMutexGuard<EntryValue<V>>,
+        guard: ReplicaOwnedMutexGuard<EntryValue<V>>,
     },
 }
 
@@ -183,11 +184,13 @@ where
             }
         };
         let result = match entries.get_or_insert_none(key) {
-            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
+            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing {
+                mutex: PrimaryArc::clone(mutex),
+            },
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
                 // can be `None`, so we need to lock it and our caller needs to make sure they handle this correctly.
-                let guard = mutex.try_lock_owned().expect(
+                let guard = PrimaryArc::clone(&mutex).try_lock_owned().expect(
                     "We're the only one who has seen this mutex so far. Locking can't fail.",
                 );
                 LoadOrInsertMutexResult::Inserted { guard }
@@ -266,11 +269,13 @@ where
             }
         };
         let result = match entries.get_or_insert_none(key) {
-            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing { mutex },
+            GetOrInsertNoneResult::Existing(mutex) => LoadOrInsertMutexResult::Existing {
+                mutex: PrimaryArc::clone(mutex),
+            },
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. But our invariant says that only locked items
                 // can be `None`, so we need to lock it and our caller needs to make sure they handle this correctly.
-                let guard = mutex.try_lock_owned().expect(
+                let guard = PrimaryArc::clone(mutex).try_lock_owned().expect(
                     "We're the only one who has seen this mutex so far. Locking can't fail.",
                 );
                 LoadOrInsertMutexResult::Inserted { guard }
@@ -282,7 +287,7 @@ where
     fn _make_guard<S: Borrow<Self>>(
         this: S,
         key: K,
-        guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
+        guard: ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
     ) -> Guard<K, V, C, S> {
         Guard::new(this, key, guard)
     }
@@ -390,10 +395,12 @@ where
         let entries = this.borrow()._entries();
         let mut previously_unlocked_entries = entries
             .iter()
-            .filter_map(|(key, mutex)| match Arc::clone(mutex).try_lock_owned() {
-                Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
-                Err(_) => None,
-            })
+            .filter_map(
+                |(key, mutex)| match PrimaryArc::clone(mutex).try_lock_owned() {
+                    Ok(guard) => Some(Self::_make_guard(this.clone(), key.clone(), guard)),
+                    Err(_) => None,
+                },
+            )
             .take_while_inclusive(take_while_condition)
             // Collecting into a Vec so that we don't have to keep `entries` locked
             // while the returned iterator is alive.
@@ -435,7 +442,7 @@ where
             .map(|(key, mutex)| {
                 let this = this.clone();
                 let key = key.clone();
-                let mutex = Arc::clone(mutex);
+                let mutex = PrimaryArc::clone(mutex);
                 async move {
                     let guard = mutex.lock_owned().await;
                     let guard = Self::_make_guard(this, key, guard);
@@ -451,7 +458,11 @@ where
             .filter_map(futures::future::ready)
     }
 
-    pub(super) fn _unlock(&self, key: &K, mut guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>) {
+    pub(super) fn _unlock(
+        &self,
+        key: &K,
+        mut guard: ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
+    ) {
         // We need to get the `entries` lock before we drop the guard, see comment in [Self::_delete_if_unlocked_and_nobody_waiting_for_lock]
         // about other threads not being able to enter this function.
         let mut entries = self._entries();
@@ -487,9 +498,9 @@ where
         // thread can newly call Self::blocking_lock/async_lock/try_lock() and create a
         // new clone of our Arc. Similarly, no other thread can enter Self::_unlock()
         // and reduce the strong_count of the Arc by dropping the guard. This means that if
-        // Arc::strong_count() == 1, we know that there is no other thread with access
+        // num_replicas() == 0 (i.e. strong_count == 1), we know that there is no other thread with access
         // that could modify strong_count. We can clean up without race conditions.
-        if Arc::strong_count(mutex) == 1 {
+        if mutex.num_replicas() == 0 {
             // TODO Combine the `get` above and `remove` here into a single hashing operation, using the hash map's entry API
             let remove_result = entries.remove(key);
             assert!(
@@ -515,7 +526,7 @@ where
         entries
             .into_iter()
             .filter_map(|(key, value)| {
-                let value = Arc::try_unwrap(value)
+                let value = PrimaryArc::try_unwrap(value)
                     .unwrap_or_else(|_| panic!("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc."));
                 let value = value.into_inner();
 
@@ -539,7 +550,7 @@ where
         let mut result = Vec::with_capacity(num_entries);
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
-            if let Ok(guard) = Arc::clone(mutex).try_lock_owned() {
+            if let Ok(guard) = PrimaryArc::clone(mutex).try_lock_owned() {
                 if guard.value.is_some() {
                     result.push(Self::_make_guard(this.clone(), key.clone(), guard))
                 } else {
