@@ -14,7 +14,7 @@ The [lockable](https://crates.io/crates/lockable) library offers thread-safe
 HashMap (see [LockableHashMap](https://docs.rs/lockable/latest/lockable/lockable_hash_map/struct.LockableHashMap.html)),
 LruCache (see [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html))
 and LockPool (see [LockPool](https://docs.rs/lockable/latest/lockable/lockpool/struct.LockPool.html)) types. In all of these
-dat atypes, individual keys can be locked/unlocked, even if there is no entry
+data types, individual keys can be locked/unlocked, even if there is no entry
 for this key in the map or cache.
 
 This can be very useful for synchronizing access to an underlying key-value

@@ -2,7 +2,7 @@
 //! HashMap (see [LockableHashMap](crate::lockable_hash_map::LockableHashMap)),
 //! LruCache (see [LockableLruCache](crate::lockable_lru_cache::LockableLruCache))
 //! and LockPool (see [LockPool](crate::lockpool::LockPool)) types. In all of these
-//! dat atypes, individual keys can be locked/unlocked, even if there is no entry
+//! data types, individual keys can be locked/unlocked, even if there is no entry
 //! for this key in the map or cache.
 //!
 //! This can be very useful for synchronizing access to an underlying key-value
