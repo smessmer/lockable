@@ -106,7 +106,6 @@
 //!    It is not helpful in finding bugs in user code. If you do enable this and encounter an
 //!    assertion failing, please report it in a GitHub issue.
 
-
 // TODO Figure out which functions actually should or shouldn't be #[inline]
 
 #![forbid(unsafe_code)]
