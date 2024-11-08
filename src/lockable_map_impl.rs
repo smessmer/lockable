@@ -628,23 +628,16 @@ where
         num_entries: usize,
     ) -> Vec<Guard<K, V, C, S>> {
         let mut result = Vec::with_capacity(num_entries);
-        let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
             if let Ok(guard) = PrimaryArc::clone(mutex).try_lock_owned() {
                 if guard.value.is_some() {
                     result.push(Self::_make_guard(this.clone(), key.clone(), guard))
                 } else {
-                    // Invariant 2C:
-                    // This can happen if the entry was deleted while we waited for the lock.
-                    // Because we have a Arc::clone of the mutex here, the _unlock() of that
-                    // deletion operation didn't actually delete the entry and we need
-                    // to give a chance for deletion now. We can't immediately delete it
-                    // because that requires a &mut borrow of entries and we currently have
-                    // a & borrow. But we can remember those keys and delete them further down.
-                    to_delete.push(key.clone());
-
-                    // TODO We may not need this? We have a lock on `entries`, and our invariants ensure
-                    // that the other thread that set it to `None` will clean it up.
+                    // We have not created this `None` entry and according to invariant 2, we know that there is
+                    // a [ReplicaArc] for it somewhere. Even though it seems to be unlocked, we know it exists.
+                    // Because we have a lock on `entries`, invariant 2C tells us that this [ReplicaArc]'s destruction
+                    // will wait for us before cleaning up the `None`.
+                    // We don't need to worry about cleaning up the `None` ourselves.
                 }
             } else {
                 // Invariant 2C:
@@ -658,13 +651,6 @@ where
             if result.len() >= num_entries {
                 break;
             }
-        }
-        // Great, we either locked `num_entries` entries, or ran out of entries. Now let's delete the None
-        // entries we found and we can return our result. We still have a lock on `entries`, so we know
-        // that no new tasks can have entered Self::blocking_lock/async_lock/try_lock and tried to lock any
-        // of those keys.
-        for key in to_delete {
-            Self::_delete_if_unlocked_and_nobody_waiting_for_lock(entries, &key);
         }
         result
     }
