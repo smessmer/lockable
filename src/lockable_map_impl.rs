@@ -488,11 +488,11 @@ where
         key: &K,
         mut guard: ReplicaOwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
     ) {
-        // We need to get the `entries` lock before we drop the guard, see invariant 2C.
-        let mut entries = self._entries();
-        // TODO Can we move the hook and the entry_carries_a_value calculation to above locking `entries`?
         self.config.on_unlock(guard.value.as_mut());
         let entry_carries_a_value = guard.value.is_some();
+
+        // We need to get the `entries` lock before we drop the guard, see invariant 2C.
+        let mut entries = self._entries();
         std::mem::drop(guard);
 
         // Now the guard is dropped and the lock for this key is unlocked.
