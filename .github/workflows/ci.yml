@@ -180,7 +180,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          # token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          token: ${{ secrets.CODECOV_TOKEN }}  # not required for public repos, but leaving it here because it seems we run into rate limit issues on Codecov's API without it.
           files: lcov.info
           fail_ci_if_error: true
           verbose: true
