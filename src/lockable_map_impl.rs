@@ -13,6 +13,9 @@ use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{GetOrInsertNoneResult, MapLike};
 
 pub trait LockableMapConfig {
+    type MapImpl<K, V>: MapLike<K, Entry<Self::WrappedV<V>>>
+    where
+        K: Eq + PartialEq + Hash + Clone;
     type WrappedV<V>;
 
     fn borrow_value<V>(v: &Self::WrappedV<V>) -> &V;
@@ -36,10 +39,9 @@ pub struct EntryValue<V> {
 
 pub(super) type Entry<V> = Arc<tokio::sync::Mutex<EntryValue<V>>>;
 
-pub struct LockableMapImpl<M, K, V, C>
+pub struct LockableMapImpl<K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     // We always use std::sync::Mutex for protecting the whole map since its guards
@@ -55,7 +57,7 @@ where
     //   If an entry is in the map and the value is `None`, then there must be a lock on the entry.
     //   This is because the only reason to allow `None` in the map is for locking keys that don't have a value.
     //   But once the lock is released, the entry should be removed from the map.
-    entries: std::sync::Mutex<M>,
+    entries: std::sync::Mutex<C::MapImpl<K, V>>,
 
     config: C,
 
@@ -72,16 +74,15 @@ enum LoadOrInsertMutexResult<V> {
     },
 }
 
-impl<M, K, V, C> LockableMapImpl<M, K, V, C>
+impl<K, V, C> LockableMapImpl<K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     #[inline]
     pub fn new(config: C) -> Self {
         Self {
-            entries: std::sync::Mutex::new(M::new()),
+            entries: std::sync::Mutex::new(C::MapImpl::<K, V>::new()),
             config,
             _k: PhantomData,
             _v: PhantomData,
@@ -104,7 +105,7 @@ where
         self._entries().len()
     }
 
-    fn _entries(&self) -> std::sync::MutexGuard<'_, M> {
+    fn _entries(&self) -> std::sync::MutexGuard<'_, C::MapImpl<K, V>> {
         self.entries
             .lock()
             .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
@@ -113,12 +114,12 @@ where
     async fn _load_or_insert_mutex_for_key_async<S, E, F, OnEvictFn>(
         this: &S,
         key: &K,
-        limit: AsyncLimit<M, K, V, C, S, E, F, OnEvictFn>,
+        limit: AsyncLimit<K, V, C, S, E, F, OnEvictFn>,
     ) -> Result<LoadOrInsertMutexResult<C::WrappedV<V>>, E>
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> F,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync without the .await calls
         let mut entries = match limit {
@@ -198,11 +199,11 @@ where
     fn _load_or_insert_mutex_for_key_sync<S, E, OnEvictFn>(
         this: &S,
         key: &K,
-        limit: SyncLimit<M, K, V, C, S, E, OnEvictFn>,
+        limit: SyncLimit<K, V, C, S, E, OnEvictFn>,
     ) -> Result<LoadOrInsertMutexResult<C::WrappedV<V>>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> Result<(), E>,
     {
         // Note: this logic is duplicated in _load_or_insert_mutex_for_key_sync with some .await calls
         let mut entries = match limit {
@@ -282,7 +283,7 @@ where
         this: S,
         key: K,
         guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>,
-    ) -> Guard<M, K, V, C, S> {
+    ) -> Guard<K, V, C, S> {
         Guard::new(this, key, guard)
     }
 
@@ -290,11 +291,11 @@ where
     pub fn blocking_lock<S, E, OnEvictFn>(
         this: S,
         key: K,
-        limit: SyncLimit<M, K, V, C, S, E, OnEvictFn>,
-    ) -> Result<Guard<M, K, V, C, S>, E>
+        limit: SyncLimit<K, V, C, S, E, OnEvictFn>,
+    ) -> Result<Guard<K, V, C, S>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -312,12 +313,12 @@ where
     pub async fn async_lock<S, E, F, OnEvictFn>(
         this: S,
         key: K,
-        limit: AsyncLimit<M, K, V, C, S, E, F, OnEvictFn>,
-    ) -> Result<Guard<M, K, V, C, S>, E>
+        limit: AsyncLimit<K, V, C, S, E, F, OnEvictFn>,
+    ) -> Result<Guard<K, V, C, S>, E>
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -335,11 +336,11 @@ where
     pub fn try_lock<S, E, OnEvictFn>(
         this: S,
         key: K,
-        limit: SyncLimit<M, K, V, C, S, E, OnEvictFn>,
-    ) -> Result<Option<Guard<M, K, V, C, S>>, E>
+        limit: SyncLimit<K, V, C, S, E, OnEvictFn>,
+    ) -> Result<Option<Guard<K, V, C, S>>, E>
     where
         S: Borrow<Self> + Clone,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> Result<(), E>,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> Result<(), E>,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_sync(&this, &key, limit)?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -360,12 +361,12 @@ where
     pub async fn try_lock_async<S, E, F, OnEvictFn>(
         this: S,
         key: K,
-        limit: AsyncLimit<M, K, V, C, S, E, F, OnEvictFn>,
-    ) -> Result<Option<Guard<M, K, V, C, S>>, E>
+        limit: AsyncLimit<K, V, C, S, E, F, OnEvictFn>,
+    ) -> Result<Option<Guard<K, V, C, S>>, E>
     where
         S: Borrow<Self> + Clone,
         F: Future<Output = Result<(), E>>,
-        OnEvictFn: FnMut(Vec<Guard<M, K, V, C, S>>) -> F,
+        OnEvictFn: FnMut(Vec<Guard<K, V, C, S>>) -> F,
     {
         let mutex = Self::_load_or_insert_mutex_for_key_async(&this, &key, limit).await?;
         // Now we have an Arc::clone of the mutex for this key, and the global mutex is already unlocked so other threads can access the cache.
@@ -384,8 +385,8 @@ where
 
     pub fn lock_all_unlocked<S: Borrow<Self> + Clone>(
         this: S,
-        take_while_condition: &impl Fn(&Guard<M, K, V, C, S>) -> bool,
-    ) -> Vec<Guard<M, K, V, C, S>> {
+        take_while_condition: &impl Fn(&Guard<K, V, C, S>) -> bool,
+    ) -> Vec<Guard<K, V, C, S>> {
         let entries = this.borrow()._entries();
         let mut previously_unlocked_entries = entries
             .iter()
@@ -427,7 +428,7 @@ where
     /// - entries that were locked by another thread or task but don't have a value will not be returned
     pub async fn lock_all_entries<S: Borrow<Self> + Clone>(
         this: S,
-    ) -> impl Stream<Item = Guard<M, K, V, C, S>> {
+    ) -> impl Stream<Item = Guard<K, V, C, S>> {
         let entries = this.borrow()._entries();
         entries
             .iter()
@@ -474,7 +475,7 @@ where
     }
 
     fn _delete_if_unlocked_and_nobody_waiting_for_lock(
-        entries: &mut std::sync::MutexGuard<'_, M>,
+        entries: &mut std::sync::MutexGuard<'_, C::MapImpl<K, V>>,
         key: &K,
     ) {
         let mutex: &Entry<C::WrappedV<V>> = entries
@@ -504,7 +505,7 @@ where
     }
 
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, C::WrappedV<V>)> {
-        let entries: M = self.entries.into_inner().expect("Lock poisoned");
+        let entries: C::MapImpl<K, V> = self.entries.into_inner().expect("Lock poisoned");
 
         // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
         // Guard for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
@@ -532,9 +533,9 @@ where
 
     fn _lock_up_to_n_first_unlocked_entries<S: Borrow<Self> + Clone>(
         this: &S,
-        entries: &mut std::sync::MutexGuard<'_, M>,
+        entries: &mut std::sync::MutexGuard<'_, C::MapImpl<K, V>>,
         num_entries: usize,
-    ) -> Vec<Guard<M, K, V, C, S>> {
+    ) -> Vec<Guard<K, V, C, S>> {
         let mut result = Vec::with_capacity(num_entries);
         let mut to_delete = Vec::new();
         for (key, mutex) in entries.iter() {
@@ -571,10 +572,9 @@ where
     }
 }
 
-impl<M, K, V, C> Debug for LockableMapImpl<M, K, V, C>
+impl<K, V, C> Debug for LockableMapImpl<K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

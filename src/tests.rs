@@ -6,8 +6,7 @@
 //      - and make sure that we also test eviction order
 
 use crate::guard::TryInsertError;
-use crate::lockable_map_impl::{Entry, LockableMapConfig, LockableMapImpl};
-use crate::map_like::MapLike;
+use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -50,12 +49,11 @@ pub(crate) trait Guard<K, V> {
     fn try_insert(&mut self, value: V) -> Result<&mut V, TryInsertError<V>>;
     fn remove(&mut self) -> Option<V>;
 }
-impl<M, K, V, C, P> Guard<K, V> for crate::guard::Guard<M, K, V, C, P>
+impl<K, V, C, P> Guard<K, V> for crate::guard::Guard<K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     fn key(&self) -> &K {
         crate::guard::Guard::key(self)

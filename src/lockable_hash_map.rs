@@ -66,6 +66,7 @@ pub struct LockableHashMapConfig;
 
 impl LockableMapConfig for LockableHashMapConfig {
     type WrappedV<V> = V;
+    type MapImpl<K, V> = HashMap<K, Entry<V>> where K: Eq + PartialEq + Hash + Clone;
 
     fn borrow_value<V>(v: &V) -> &V {
         v
@@ -179,7 +180,7 @@ pub struct LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    map_impl: LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
+    map_impl: LockableMapImpl<K, V, LockableHashMapConfig>,
 }
 
 impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
@@ -187,24 +188,21 @@ where
     K: Eq + PartialEq + Hash + Clone,
 {
     type Guard<'a> = Guard<
-        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<K, V, LockableHashMapConfig>,
     > where
         K: 'a,
         V: 'a;
 
-    type OwnedGuard =
-        Guard<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
+    type OwnedGuard = Guard<K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
 
     type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
-        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<K, V, LockableHashMapConfig>,
         E,
         OnEvictFn,
     > where
@@ -213,7 +211,6 @@ where
         V: 'a;
 
     type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
-        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
@@ -224,11 +221,10 @@ where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
     type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
-        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
-        &'a LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>,
+        &'a LockableMapImpl<K, V, LockableHashMapConfig>,
         E,
         F,
         OnEvictFn,
@@ -239,7 +235,6 @@ where
         V: 'a;
 
     type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
-        HashMap<K, Entry<V>>,
         K,
         V,
         LockableHashMapConfig,
@@ -856,12 +851,11 @@ where
 // We implement Borrow<LockableMapImpl> for Arc<LockableHashMap> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableHashMap to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V> Borrow<LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig>>
-    for Arc<LockableHashMap<K, V>>
+impl<K, V> Borrow<LockableMapImpl<K, V, LockableHashMapConfig>> for Arc<LockableHashMap<K, V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    fn borrow(&self) -> &LockableMapImpl<HashMap<K, Entry<V>>, K, V, LockableHashMapConfig> {
+    fn borrow(&self) -> &LockableMapImpl<K, V, LockableHashMapConfig> {
         &self.map_impl
     }
 }

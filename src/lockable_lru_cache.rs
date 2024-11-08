@@ -86,6 +86,7 @@ where
     Time: TimeProvider + Clone,
 {
     type WrappedV<V> = CacheEntry<V>;
+    type MapImpl<K, V> = LruCache<K, Entry<CacheEntry<V>>> where K: Eq + PartialEq + Hash + Clone;
 
     fn borrow_value<V>(v: &CacheEntry<V>) -> &V {
         &v.value
@@ -225,7 +226,7 @@ where
     K: Eq + PartialEq + Hash + Clone,
     Time: TimeProvider + Default + Clone,
 {
-    map_impl: LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>,
+    map_impl: LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
 }
 
 impl<K, V, Time> Lockable<K, V> for LockableLruCache<K, V, Time>
@@ -234,18 +235,16 @@ where
     Time: TimeProvider + Default + Clone,
 {
     type Guard<'a> = Guard<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K,
         V,
         LockableLruCacheConfig<Time>,
-        &'a LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>,
+        &'a LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
     > where
         K: 'a,
         V: 'a,
         Time: 'a;
 
     type OwnedGuard = Guard<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K,
         V,
         LockableLruCacheConfig<Time>,
@@ -253,11 +252,10 @@ where
     >;
 
     type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K,
         V,
         LockableLruCacheConfig<Time>,
-        &'a LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>,
+        &'a LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
         E,
         OnEvictFn,
     > where
@@ -267,7 +265,6 @@ where
         Time: 'a;
 
     type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K,
         V,
         LockableLruCacheConfig<Time>,
@@ -278,11 +275,10 @@ where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
     type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K,
         V,
         LockableLruCacheConfig<Time>,
-        &'a LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>,
+        &'a LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
         E,
         F,
         OnEvictFn,
@@ -294,7 +290,6 @@ where
         Time: 'a;
 
     type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
-        LruCache<K, Entry<CacheEntry<V>>>,
         K, 
         V,
         LockableLruCacheConfig<Time>,
@@ -1005,12 +1000,12 @@ where
     }
 
     fn _lock_entries_unlocked_for_at_least<
-        S: Borrow<LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>> + Clone,
+        S: Borrow<LockableMapImpl<K, V, LockableLruCacheConfig<Time>>> + Clone,
     >(
         this: S,
         now: Instant,
         duration: Duration,
-    ) -> impl Iterator<Item = Guard<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>, S>> {
+    ) -> impl Iterator<Item = Guard<K, V, LockableLruCacheConfig<Time>, S>> {
         let cutoff = now - duration;
         LockableMapImpl::lock_all_unlocked(this, &move |entry| {
             let entry = entry.value_raw().expect("There must be a value, otherwise it cannot exist in the map as an 'unlocked' entry");
@@ -1037,13 +1032,13 @@ where
 // We implement Borrow<LockableMapImpl> for Arc<LockableLruCache<K, V>> because that's the way, our LockableMapImpl can "see through" an instance
 // of LockableLruCache to get to its "self" parameter in calls like LockableMapImpl::blocking_lock_owned.
 // Since LockableMapImpl is a type private to this crate, this Borrow doesn't escape crate boundaries.
-impl<K, V, Time> Borrow<LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>>>
+impl<K, V, Time> Borrow<LockableMapImpl<K, V, LockableLruCacheConfig<Time>>>
     for Arc<LockableLruCache<K, V, Time>>
 where
     K: Eq + PartialEq + Hash + Clone,
     Time: TimeProvider + Default + Clone,
 {
-    fn borrow(&self) -> &LockableMapImpl<LruCache<K, Entry<CacheEntry<V>>>, K, V, LockableLruCacheConfig<Time>> {
+    fn borrow(&self) -> &LockableMapImpl<K, V, LockableLruCacheConfig<Time>> {
         &self.map_impl
     }
 }

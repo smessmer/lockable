@@ -5,8 +5,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
 use crate::guard::Guard;
-use crate::lockable_map_impl::{Entry, LockableMapConfig, LockableMapImpl};
-use crate::map_like::MapLike;
+use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
 use crate::utils::never::Never;
 
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
@@ -71,14 +70,13 @@ use crate::utils::never::Never;
 /// assert!(evicted.borrow().contains(&4));
 /// # Ok::<(), lockable::Never>(())}).unwrap();
 /// ```
-pub enum AsyncLimit<M, K, V, C, P, E, F, OnEvictFn>
+pub enum AsyncLimit<K, V, C, P, E, F, OnEvictFn>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
     F: Future<Output = Result<(), E>>,
-    OnEvictFn: FnMut(Vec<Guard<M, K, V, C, P>>) -> F,
+    OnEvictFn: FnMut(Vec<Guard<K, V, C, P>>) -> F,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -86,8 +84,6 @@ where
     ///
     /// Use [AsyncLimit::no_limit] to create an instance.
     NoLimit {
-        #[doc(hidden)]
-        _m: PhantomData<M>,
         #[doc(hidden)]
         _k: PhantomData<K>,
         #[doc(hidden)]
@@ -140,29 +136,26 @@ where
     },
 }
 
-impl<M, K, V, C, P>
+impl<K, V, C, P>
     AsyncLimit<
-        M,
         K,
         V,
         C,
         P,
         Never,
         std::future::Ready<Result<(), Never>>,
-        fn(Vec<Guard<M, K, V, C, P>>) -> std::future::Ready<Result<(), Never>>,
+        fn(Vec<Guard<K, V, C, P>>) -> std::future::Ready<Result<(), Never>>,
     >
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     /// See [AsyncLimit::NoLimit]. This helper function can be used
     /// to create an instance of [AsyncLimit::NoLimit] without having
     /// to specify all the [PhantomData] members.
     pub fn no_limit() -> Self {
         Self::NoLimit {
-            _m: PhantomData,
             _k: PhantomData,
             _v: PhantomData,
             _c: PhantomData,
@@ -231,13 +224,12 @@ where
 /// assert!(evicted.contains(&4));
 /// # Ok::<(), lockable::Never>(())})().unwrap();
 /// ```
-pub enum SyncLimit<M, K, V, C, P, E, OnEvictFn>
+pub enum SyncLimit<K, V, C, P, E, OnEvictFn>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
-    OnEvictFn: FnMut(Vec<Guard<M, K, V, C, P>>) -> Result<(), E>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
+    OnEvictFn: FnMut(Vec<Guard<K, V, C, P>>) -> Result<(), E>,
 {
     /// This enum variant specifies that there is no limit on the number of entries.
     /// If the locking operation causes a new entry to be created, it will be created
@@ -245,8 +237,6 @@ where
     ///
     /// Use [SyncLimit::no_limit] to create an instance.
     NoLimit {
-        #[doc(hidden)]
-        _m: PhantomData<M>,
         #[doc(hidden)]
         _k: PhantomData<K>,
         #[doc(hidden)]
@@ -296,20 +286,17 @@ where
     },
 }
 
-impl<M, K, V, C, P>
-    SyncLimit<M, K, V, C, P, Never, fn(Vec<Guard<M, K, V, C, P>>) -> Result<(), Never>>
+impl<K, V, C, P> SyncLimit<K, V, C, P, Never, fn(Vec<Guard<K, V, C, P>>) -> Result<(), Never>>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     /// See [SyncLimit::NoLimit]. This helper function can be used
     /// to create an instance of [SyncLimit::NoLimit] without having
     /// to specify all the [PhantomData] members.
     pub fn no_limit() -> Self {
         Self::NoLimit {
-            _m: PhantomData,
             _k: PhantomData,
             _v: PhantomData,
             _c: PhantomData,

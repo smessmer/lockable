@@ -5,42 +5,37 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use tokio::sync::OwnedMutexGuard;
 
-use crate::lockable_map_impl::{Entry, EntryValue, LockableMapConfig};
+use crate::lockable_map_impl::{EntryValue, LockableMapConfig};
 
 use super::lockable_map_impl::LockableMapImpl;
-use super::map_like::MapLike;
 
 /// A RAII implementation of a scoped lock for locks from a [LockableHashMap](super::LockableHashMap) or [LockableLruCache](super::LockableLruCache). When this instance is dropped (falls out of scope), the lock will be unlocked.
 #[must_use = "if unused the Mutex will immediately unlock"]
-pub struct Guard<M, K, V, C, P>
+pub struct Guard<K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     map: P,
     key: K,
     // Invariant: Is always Some(OwnedMutexGuard) unless in the middle of destruction
     guard: Option<OwnedMutexGuard<EntryValue<C::WrappedV<V>>>>,
-    _m: PhantomData<M>,
     _c: PhantomData<C>,
     _v: PhantomData<V>,
 }
 
-impl<M, K, V, C, P> Guard<M, K, V, C, P>
+impl<K, V, C, P> Guard<K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     pub(super) fn new(map: P, key: K, guard: OwnedMutexGuard<EntryValue<C::WrappedV<V>>>) -> Self {
         Self {
             map,
             key,
             guard: Some(guard),
-            _m: PhantomData,
             _c: PhantomData,
             _v: PhantomData,
         }
@@ -364,12 +359,11 @@ where
     }
 }
 
-impl<M, K, V, C, P> Drop for Guard<M, K, V, C, P>
+impl<K, V, C, P> Drop for Guard<K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     fn drop(&mut self) {
         let guard = self
@@ -380,12 +374,11 @@ where
     }
 }
 
-impl<M, K, V, C, P> Debug for Guard<M, K, V, C, P>
+impl<K, V, C, P> Debug for Guard<K, V, C, P>
 where
     K: Eq + PartialEq + Hash + Clone + Debug,
-    M: MapLike<K, Entry<C::WrappedV<V>>>,
     C: LockableMapConfig + Clone,
-    P: Borrow<LockableMapImpl<M, K, V, C>>,
+    P: Borrow<LockableMapImpl<K, V, C>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Guard({:?})", self.key)
