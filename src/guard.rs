@@ -399,3 +399,15 @@ pub enum TryInsertError<V> {
         value: V,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{LockableHashMap, SyncLimit};
+
+    #[test]
+    fn test_debug() {
+        let map = LockableHashMap::<i64, String>::new();
+        let guard = map.blocking_lock(4, SyncLimit::no_limit()).unwrap();
+        assert_eq!("Guard(4)", format!("{:?}", guard));
+    }
+}

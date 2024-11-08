@@ -752,3 +752,15 @@ where
         Self::assert_invariant(&self.entries);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lockable_hash_map::LockableHashMapConfig;
+
+    #[test]
+    fn test_debug() {
+        let map = LockableMapImpl::<i64, String, LockableHashMapConfig>::new(LockableHashMapConfig);
+        assert_eq!("LockableMapImpl", format!("{:?}", map));
+    }
+}

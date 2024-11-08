@@ -1531,4 +1531,10 @@ mod tests {
             lock_entries_unlocked_for_at_least_owned
         );
     }
+
+    #[test]
+    fn test_default() {
+        let lockable_map: LockableLruCache<i64, String> = Default::default();
+        assert_eq!(0, lockable_map.num_entries_or_locked());
+    }
 }

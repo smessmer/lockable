@@ -865,4 +865,10 @@ mod tests {
     use crate::instantiate_lockable_tests;
 
     instantiate_lockable_tests!(LockableHashMap);
+
+    #[test]
+    fn test_default() {
+        let lockable_map: LockableHashMap<i64, String> = Default::default();
+        assert_eq!(0, lockable_map.num_entries_or_locked());
+    }
 }
