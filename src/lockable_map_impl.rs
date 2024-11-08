@@ -199,7 +199,7 @@ where
             GetOrInsertNoneResult::Inserted(mutex) => {
                 // If we just inserted the new entry, it'll have a `None` value. To fulfill invariant 2B, we need to put it in a [ReplicaOwnedMutexGuard].
                 // The call site needs to make sure it fulfills invariant 2C when dropping that [ReplicaOwnedMutexGuard].
-                let guard = PrimaryArc::clone(&mutex).try_lock_owned().expect(
+                let guard = PrimaryArc::clone(mutex).try_lock_owned().expect(
                     "We're the only one who has seen this mutex so far. Locking can't fail.",
                 );
                 LoadOrInsertMutexResult::Inserted { guard }

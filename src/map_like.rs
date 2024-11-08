@@ -22,7 +22,7 @@ where
 
     fn len(&self) -> usize;
 
-    fn get_or_insert_none<'s, 'k>(&'s mut self, key: &'k K) -> GetOrInsertNoneResult<'s, V>;
+    fn get_or_insert_none<'s>(&'s mut self, key: &K) -> GetOrInsertNoneResult<'s, V>;
 
     fn get(&mut self, key: &K) -> Option<&V>;
 
