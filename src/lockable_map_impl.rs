@@ -5,13 +5,13 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
 use std::marker::PhantomData;
-
-use crate::utils::primary_arc::{ReplicaArc, ReplicaOwnedMutexGuard};
+use std::ops::{Deref, DerefMut};
 
 use super::guard::Guard;
 use super::limit::{AsyncLimit, SyncLimit};
 use super::map_like::{GetOrInsertNoneResult, MapLike};
 use super::utils::primary_arc::PrimaryArc;
+use crate::utils::primary_arc::{ReplicaArc, ReplicaOwnedMutexGuard};
 
 pub trait LockableMapConfig {
     type MapImpl<K, V>: MapLike<K, Entry<Self::WrappedV<V>>>
@@ -114,10 +114,10 @@ where
         self._entries().len()
     }
 
-    fn _entries(&self) -> std::sync::MutexGuard<'_, C::MapImpl<K, V>> {
-        self.entries
+    fn _entries(&self) -> EntriesGuard<'_, K, V, C> {
+        EntriesGuard::new(self.entries
             .lock()
-            .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it")
+            .expect("The global mutex protecting the LockableCache is poisoned. This shouldn't happen since there shouldn't be any user code running while this lock is held so no thread should ever panic with it"))
     }
 
     async fn _load_or_insert_mutex_for_key_async<S, E, F, OnEvictFn>(
@@ -537,6 +537,9 @@ where
     pub fn into_entries_unordered(self) -> impl Iterator<Item = (K, C::WrappedV<V>)> {
         let entries: C::MapImpl<K, V> = self.entries.into_inner().expect("Lock poisoned");
 
+        #[cfg(any(test, feature = "slow_assertions"))]
+        EntriesGuard::<K, V, C>::assert_invariant(&entries);
+
         // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
         // Guard for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
         // indirectly through the Arc but if user code calls this function, it means they had to call Arc::try_unwrap or something similar
@@ -561,7 +564,7 @@ where
 
     fn _lock_up_to_n_first_unlocked_entries<S: Borrow<Self> + Clone>(
         this: &S,
-        entries: &mut std::sync::MutexGuard<'_, C::MapImpl<K, V>>,
+        entries: &mut EntriesGuard<'_, K, V, C>,
         num_entries: usize,
     ) -> Vec<Guard<K, V, C, S>> {
         let mut result = Vec::with_capacity(num_entries);
@@ -607,5 +610,86 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("LockableMapImpl").finish()
+    }
+}
+
+/// Simple wrapper around `MutexGuard<C::MapImpl<K, V>>`.
+/// In release mode, this doesn't do anything else.
+/// In debug mode or tests, it enforces our invariants.
+struct EntriesGuard<'a, K, V, C>
+where
+    K: Eq + PartialEq + Hash + Clone,
+    C: LockableMapConfig + Clone,
+{
+    entries: std::sync::MutexGuard<'a, C::MapImpl<K, V>>,
+    _k: PhantomData<K>,
+    _v: PhantomData<V>,
+    _c: PhantomData<C>,
+}
+
+impl<'a, K, V, C> EntriesGuard<'a, K, V, C>
+where
+    K: Eq + PartialEq + Hash + Clone,
+    C: LockableMapConfig + Clone,
+{
+    fn new(entries: std::sync::MutexGuard<'a, C::MapImpl<K, V>>) -> Self {
+        #[cfg(any(test, feature = "slow_assertions"))]
+        Self::assert_invariant(&entries);
+
+        Self {
+            entries,
+            _k: PhantomData,
+            _v: PhantomData,
+            _c: PhantomData,
+        }
+    }
+
+    #[cfg(any(test, feature = "slow_assertions"))]
+    #[track_caller]
+    fn assert_invariant(entries: &C::MapImpl<K, V>) {
+        for (_key, entry) in entries.iter() {
+            if entry.num_replicas() == 0 {
+                let guard = PrimaryArc::clone(entry)
+                    .try_lock_owned()
+                    .expect("We're the only one with access, locking can't fail");
+                assert!(
+                    guard.value.is_some(),
+                    "Invariant 2 violated. Found an entry without ReplicaArcs that is None."
+                );
+            }
+        }
+    }
+}
+
+impl<'a, K, V, C> Deref for EntriesGuard<'a, K, V, C>
+where
+    K: Eq + PartialEq + Hash + Clone,
+    C: LockableMapConfig + Clone,
+{
+    type Target = C::MapImpl<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+
+impl<'a, K, V, C> DerefMut for EntriesGuard<'a, K, V, C>
+where
+    K: Eq + PartialEq + Hash + Clone,
+    C: LockableMapConfig + Clone,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entries
+    }
+}
+
+#[cfg(any(test, feature = "slow_assertions"))]
+impl<'a, K, V, C> Drop for EntriesGuard<'a, K, V, C>
+where
+    K: Eq + PartialEq + Hash + Clone,
+    C: LockableMapConfig + Clone,
+{
+    fn drop(&mut self) {
+        Self::assert_invariant(&self.entries);
     }
 }

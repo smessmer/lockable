@@ -19,6 +19,8 @@ all-features = true
 [features]
 default = ["lru"]
 lru = ["dep:lru"]
+# Enable slow assertions. Don't use this in production code. It is *very* slow.
+slow_assertions = []
 
 [dependencies]
 futures = "^0.3"
