@@ -81,6 +81,7 @@ where
     }
 }
 
+/// Instantiate tests for a lockable_type, with given functions for sync and async tests.
 #[macro_export]
 macro_rules! instantiate_lockable_tests {
     (@gen_tests, $lockable_type: ident, $test_sync_fn: ident, $test_async_fn: ident) => {
