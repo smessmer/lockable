@@ -17,9 +17,9 @@ version = "0.1.1"
 all-features = true
 
 [features]
+# See README.md for documentation about these features
 default = ["lru"]
 lru = ["dep:lru"]
-# Enable slow assertions. Don't use this in production code. It is *very* slow.
 slow_assertions = []
 
 [dependencies]
