@@ -30,6 +30,8 @@ jobs:
           use-cross: true
           command: ${{ matrix.command }}
           args: ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
+        env:
+          RUST_BACKTRACE: '1'
   arm_minimal_versions:
     name: arm_minimal_versions
     runs-on: ubuntu-latest
@@ -58,6 +60,8 @@ jobs:
           use-cross: true
           command: ${{ matrix.command }}
           args: ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
+        env:
+          RUST_BACKTRACE: '1'
   x64:
     name: x64
     runs-on: ubuntu-latest
@@ -78,6 +82,8 @@ jobs:
         with:
           command: ${{ matrix.command }}
           args: ${{ matrix.features }} ${{ matrix.profile }}
+        env:
+          RUST_BACKTRACE: '1'
   x64_minimal_versions:
     name: x64_minimal_versions
     runs-on: ubuntu-latest
@@ -103,6 +109,8 @@ jobs:
         with:
           command: ${{ matrix.command }}
           args: ${{ matrix.features }} ${{ matrix.profile }}
+        env:
+          RUST_BACKTRACE: '1'
   clippy_check:
     name: Linter (clippy)
     runs-on: ubuntu-latest

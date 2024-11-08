@@ -632,6 +632,7 @@ where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
 {
+    #[track_caller]
     fn new(entries: std::sync::MutexGuard<'a, C::MapImpl<K, V>>) -> Self {
         #[cfg(any(test, feature = "slow_assertions"))]
         Self::assert_invariant(&entries);
