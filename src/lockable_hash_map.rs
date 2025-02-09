@@ -20,7 +20,8 @@ impl<K, V> MapLike<K, Entry<V>> for HashMap<K, Entry<V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type ItemIter<'a> = std::collections::hash_map::Iter<'a, K, Entry<V>>
+    type ItemIter<'a>
+        = std::collections::hash_map::Iter<'a, K, Entry<V>>
     where
         K: 'a,
         V: 'a;
@@ -65,7 +66,10 @@ pub struct LockableHashMapConfig;
 
 impl LockableMapConfig for LockableHashMapConfig {
     type WrappedV<V> = V;
-    type MapImpl<K, V> = HashMap<K, Entry<V>> where K: Eq + PartialEq + Hash + Clone;
+    type MapImpl<K, V>
+        = HashMap<K, Entry<V>>
+    where
+        K: Eq + PartialEq + Hash + Clone;
 
     fn borrow_value<V>(v: &V) -> &V {
         v
@@ -186,40 +190,35 @@ impl<K, V> Lockable<K, V> for LockableHashMap<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type Guard<'a> = Guard<
-        K,
-        V,
-        LockableHashMapConfig,
-        &'a LockableMapImpl<K, V, LockableHashMapConfig>,
-    > where
+    type Guard<'a>
+        = Guard<K, V, LockableHashMapConfig, &'a LockableMapImpl<K, V, LockableHashMapConfig>>
+    where
         K: 'a,
         V: 'a;
 
     type OwnedGuard = Guard<K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>>;
 
-    type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
+    type SyncLimit<'a, OnEvictFn, E>
+        = SyncLimit<
         K,
         V,
         LockableHashMapConfig,
         &'a LockableMapImpl<K, V, LockableHashMapConfig>,
         E,
         OnEvictFn,
-    > where
+    >
+    where
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
         K: 'a,
         V: 'a;
 
-    type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
-        K,
-        V,
-        LockableHashMapConfig,
-        Arc<LockableHashMap<K, V>>,
-        E,
-        OnEvictFn,
-    > where
+    type SyncLimitOwned<OnEvictFn, E>
+        = SyncLimit<K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>, E, OnEvictFn>
+    where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
-    type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
+    type AsyncLimit<'a, OnEvictFn, E, F>
+        = AsyncLimit<
         K,
         V,
         LockableHashMapConfig,
@@ -227,21 +226,16 @@ where
         E,
         F,
         OnEvictFn,
-    > where
+    >
+    where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
         K: 'a,
         V: 'a;
 
-    type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
-        K,
-        V,
-        LockableHashMapConfig,
-        Arc<LockableHashMap<K, V>>,
-        E,
-        F,
-        OnEvictFn,
-    > where
+    type AsyncLimitOwned<OnEvictFn, E, F>
+        = AsyncLimit<K, V, LockableHashMapConfig, Arc<LockableHashMap<K, V>>, E, F, OnEvictFn>
+    where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
 }

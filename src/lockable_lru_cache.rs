@@ -25,7 +25,8 @@ impl<K, V> MapLike<K, Entry<V>> for LruCache<K, Entry<V>>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type ItemIter<'a> = Rev<lru::Iter<'a, K, Entry<V>>>
+    type ItemIter<'a>
+        = Rev<lru::Iter<'a, K, Entry<V>>>
     where
         K: 'a,
         V: 'a;
@@ -91,7 +92,10 @@ where
     Time: TimeProvider + Clone,
 {
     type WrappedV<V> = CacheEntry<V>;
-    type MapImpl<K, V> = LruCache<K, Entry<CacheEntry<V>>> where K: Eq + PartialEq + Hash + Clone;
+    type MapImpl<K, V>
+        = LruCache<K, Entry<CacheEntry<V>>>
+    where
+        K: Eq + PartialEq + Hash + Clone;
 
     fn borrow_value<V>(v: &CacheEntry<V>) -> &V {
         &v.value
@@ -239,42 +243,49 @@ where
     K: Eq + PartialEq + Hash + Clone,
     Time: TimeProvider + Default + Clone,
 {
-    type Guard<'a> = Guard<
+    type Guard<'a>
+        = Guard<
         K,
         V,
         LockableLruCacheConfig<Time>,
         &'a LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
-    > where
+    >
+    where
         K: 'a,
         V: 'a,
         Time: 'a;
 
     type OwnedGuard = Guard<K, V, LockableLruCacheConfig<Time>, Arc<LockableLruCache<K, V, Time>>>;
 
-    type SyncLimit<'a, OnEvictFn, E> = SyncLimit<
+    type SyncLimit<'a, OnEvictFn, E>
+        = SyncLimit<
         K,
         V,
         LockableLruCacheConfig<Time>,
         &'a LockableMapImpl<K, V, LockableLruCacheConfig<Time>>,
         E,
         OnEvictFn,
-    > where
+    >
+    where
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
         K: 'a,
         V: 'a,
         Time: 'a;
 
-    type SyncLimitOwned<OnEvictFn, E> = SyncLimit<
+    type SyncLimitOwned<OnEvictFn, E>
+        = SyncLimit<
         K,
         V,
         LockableLruCacheConfig<Time>,
         Arc<LockableLruCache<K, V, Time>>,
         E,
         OnEvictFn,
-    > where
+    >
+    where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
-    type AsyncLimit<'a, OnEvictFn, E, F> = AsyncLimit<
+    type AsyncLimit<'a, OnEvictFn, E, F>
+        = AsyncLimit<
         K,
         V,
         LockableLruCacheConfig<Time>,
@@ -282,14 +293,16 @@ where
         E,
         F,
         OnEvictFn,
-    > where
+    >
+    where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
         K: 'a,
         V: 'a,
         Time: 'a;
 
-    type AsyncLimitOwned<OnEvictFn, E, F> = AsyncLimit<
+    type AsyncLimitOwned<OnEvictFn, E, F>
+        = AsyncLimit<
         K,
         V,
         LockableLruCacheConfig<Time>,
@@ -297,7 +310,8 @@ where
         E,
         F,
         OnEvictFn,
-    > where
+    >
+    where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
 }

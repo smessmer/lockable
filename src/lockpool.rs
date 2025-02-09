@@ -55,28 +55,33 @@ impl<K> Lockable<K, ()> for LockPool<K>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    type Guard<'a> = <LockableHashMap<K, ()> as Lockable<K, ()>>::Guard<'a>
+    type Guard<'a>
+        = <LockableHashMap<K, ()> as Lockable<K, ()>>::Guard<'a>
     where
         K: 'a;
 
     type OwnedGuard = <LockableHashMap<K, ()> as Lockable<K, ()>>::OwnedGuard;
 
-    type SyncLimit<'a, OnEvictFn, E> = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimit<'a, OnEvictFn, E>
+    type SyncLimit<'a, OnEvictFn, E>
+        = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimit<'a, OnEvictFn, E>
     where
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> Result<(), E>,
         K: 'a;
 
-    type SyncLimitOwned<OnEvictFn, E> = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimitOwned<OnEvictFn, E>
+    type SyncLimitOwned<OnEvictFn, E>
+        = <LockableHashMap<K, ()> as Lockable<K, ()>>::SyncLimitOwned<OnEvictFn, E>
     where
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> Result<(), E>;
 
-    type AsyncLimit<'a, OnEvictFn, E, F> = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimit<'a, OnEvictFn, E, F>
+    type AsyncLimit<'a, OnEvictFn, E, F>
+        = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimit<'a, OnEvictFn, E, F>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::Guard<'a>>) -> F,
         K: 'a;
 
-    type AsyncLimitOwned<OnEvictFn, E, F> = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimitOwned<OnEvictFn, E, F>
+    type AsyncLimitOwned<OnEvictFn, E, F>
+        = <LockableHashMap<K, ()> as Lockable<K, ()>>::AsyncLimitOwned<OnEvictFn, E, F>
     where
         F: Future<Output = Result<(), E>>,
         OnEvictFn: FnMut(Vec<Self::OwnedGuard>) -> F;
