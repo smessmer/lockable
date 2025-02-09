@@ -722,7 +722,7 @@ where
     }
 }
 
-impl<'a, K, V, C> Deref for EntriesGuard<'a, K, V, C>
+impl<K, V, C> Deref for EntriesGuard<'_, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
@@ -734,7 +734,7 @@ where
     }
 }
 
-impl<'a, K, V, C> DerefMut for EntriesGuard<'a, K, V, C>
+impl<K, V, C> DerefMut for EntriesGuard<'_, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
@@ -745,7 +745,7 @@ where
 }
 
 #[cfg(any(test, feature = "slow_assertions"))]
-impl<'a, K, V, C> Drop for EntriesGuard<'a, K, V, C>
+impl<K, V, C> Drop for EntriesGuard<'_, K, V, C>
 where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
