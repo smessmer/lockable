@@ -17,7 +17,8 @@ jobs:
         command: ["build", "test"]
         profile: ["", "--release"]
         features: ["", "--no-default-features", "--all-features"]
-        toolchain: ["stable", "nightly", "1.75"]
+        # Project MRSV is 1.75 for x64, but for arm one of our dependencies needs at least 1.81
+        toolchain: ["stable", "nightly", "1.81"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
