@@ -136,7 +136,7 @@ jobs:
           toolchain: stable
           components: rustfmt
           default: true
-      - uses: mbrobbel/rustfmt-check@0.8.0
+      - uses: mbrobbel/rustfmt-check@0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
   sync_readme:
