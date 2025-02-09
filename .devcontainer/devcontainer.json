@@ -7,7 +7,7 @@
 		},
 		"ghcr.io/meaningful-ooo/devcontainer-features/fish:1": {}
 	},
-	"postCreateCommand": ".devcontainer/setup_fish.sh",
+	"postCreateCommand": ".devcontainer/setup.sh",
 	"customizations": {
 		"vscode": {
 			"settings": {
