@@ -907,7 +907,7 @@ where
     /// ```
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
-    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> + use<K, V, Time> {
         LockableMapImpl::lock_all_entries(Arc::clone(self)).await
     }
 
@@ -1005,7 +1005,7 @@ where
     pub fn lock_entries_unlocked_for_at_least_owned(
         self: &Arc<Self>,
         duration: Duration,
-    ) -> impl Iterator<Item = <Self as Lockable<K, V>>::OwnedGuard> {
+    ) -> impl Iterator<Item = <Self as Lockable<K, V>>::OwnedGuard> + use<K, V, Time> {
         Self::_lock_entries_unlocked_for_at_least(
             Arc::clone(self),
             self.map_impl.config().time_provider.now(),

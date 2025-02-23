@@ -827,7 +827,7 @@ where
     /// ```
     pub async fn lock_all_entries_owned(
         self: &Arc<Self>,
-    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> {
+    ) -> impl Stream<Item = <Self as Lockable<K, V>>::OwnedGuard> + use<K, V> {
         LockableMapImpl::lock_all_entries(Arc::clone(self)).await
     }
 }
