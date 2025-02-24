@@ -31,7 +31,6 @@ itertools = "^0.13"
 
 [dev-dependencies]
 tokio = {version = "^1.22", features = ["sync", "time", "macros", "rt-multi-thread"]}
-async-trait = "^0.1.83"
 criterion = {version = "^0.5", features = ["async_tokio"]}
 
 [[bench]]

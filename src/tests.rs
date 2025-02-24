@@ -126,7 +126,6 @@ macro_rules! instantiate_lockable_tests {
         }
     };
     ($lockable_type: ident) => {
-        use async_trait::async_trait;
         use std::ops::Deref;
         use std::sync::Arc;
         use tokio::sync::{Mutex, OwnedMutexGuard};
@@ -249,7 +248,6 @@ macro_rules! instantiate_lockable_tests {
         }
         /// A trait that allows our test cases to abstract over different async locking methods
         /// (i.e. async_lock, async_lock_owned, try_lock_async, try_lock_owned_async)
-        #[async_trait]
         trait AsyncLocking<S, K, V> : Clone + Send
         where
             S: Borrow<$lockable_type::<K, V>> + Sync,
@@ -266,7 +264,6 @@ macro_rules! instantiate_lockable_tests {
         }
         #[derive(Clone, Copy)]
         struct TryLockAsync;
-        #[async_trait]
         impl <K, V> AsyncLocking<$lockable_type::<K, V>, K, V> for TryLockAsync
         where
             K: Eq + PartialEq + Hash + Clone + Send + Sync + 'static,
@@ -297,7 +294,6 @@ macro_rules! instantiate_lockable_tests {
         }
         #[derive(Clone, Copy)]
         struct TryLockOwnedAsync;
-        #[async_trait]
         impl <K, V> AsyncLocking<Arc<$lockable_type::<K, V>>, K, V> for TryLockOwnedAsync
         where
             K: Eq + PartialEq + Hash + Clone + Send + Sync + Debug + 'static,
@@ -328,7 +324,6 @@ macro_rules! instantiate_lockable_tests {
         }
         #[derive(Clone, Copy)]
         struct AsyncLock;
-        #[async_trait]
         impl <K, V> AsyncLocking<$lockable_type::<K, V>, K, V> for AsyncLock
         where
             K: Eq + PartialEq + Hash + Clone + Send + Sync + 'static,
@@ -348,7 +343,6 @@ macro_rules! instantiate_lockable_tests {
         }
         #[derive(Clone, Copy)]
         struct AsyncLockOwned;
-        #[async_trait]
         impl <K, V> AsyncLocking<Arc<$lockable_type::<K, V>>, K, V> for AsyncLockOwned
         where
             K: Eq + PartialEq + Hash + Clone + Send + Sync + Debug + 'static,

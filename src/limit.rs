@@ -74,6 +74,7 @@ where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
     P: Borrow<LockableMapImpl<K, V, C>>,
+    // TODO Use AsyncFn, but https://users.rust-lang.org/t/asyncfn-send-lifetime-issue/126133
     F: Future<Output = Result<(), E>>,
     OnEvictFn: FnMut(Vec<Guard<K, V, C, P>>) -> F,
 {
