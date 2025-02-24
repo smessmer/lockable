@@ -2,7 +2,6 @@ use futures::stream::Stream;
 use lru::LruCache;
 use std::borrow::Borrow;
 use std::fmt::Debug;
-use std::future::Future;
 use std::hash::Hash;
 use std::iter::Rev;
 use std::sync::Arc;

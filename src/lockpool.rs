@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::hash::Hash;
 
 use super::limit::{AsyncLimit, SyncLimit};

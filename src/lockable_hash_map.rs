@@ -2,7 +2,6 @@ use futures::stream::Stream;
 use std::borrow::Borrow;
 use std::collections::hash_map::{self, HashMap};
 use std::fmt::Debug;
-use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::Mutex;

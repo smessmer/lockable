@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::future::Future;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;

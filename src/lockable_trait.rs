@@ -1,5 +1,3 @@
-use std::future::Future;
-
 /// A common trait for both [LockableHashMap](crate::LockableHashMap) and [LockableLruCache](crate::LockableLruCache) that offers some common
 /// functionalities.
 pub trait Lockable<K, V> {
