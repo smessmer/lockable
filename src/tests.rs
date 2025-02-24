@@ -2719,7 +2719,7 @@ macro_rules! instantiate_lockable_tests {
 
         #[tokio::test]
         async fn async_lock_owned_guards_can_be_passed_around() {
-            let make_guard = || async {
+            let make_guard = async || {
                 let pool = Arc::new($lockable_type::<isize, String>::new());
                 pool.async_lock_owned(5, AsyncLimit::no_limit()).await.unwrap()
             };

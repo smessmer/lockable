@@ -49,18 +49,16 @@ use crate::utils::never::Never;
 /// let evicted = Rc::new(RefCell::new(vec![]));
 /// let guard = lockable_map.async_lock(4, AsyncLimit::SoftLimit {
 ///   max_entries: 2.try_into().unwrap(),
-///   on_evict: |entries| {
+///   on_evict: async |entries| {
 ///     let evicted = Rc::clone(&evicted);
-///     async move {
-///       for mut entry in entries {
-///         evicted.borrow_mut().push(*entry.key());
-///         // We have to remove the entry from the map, the map doesn't do it for us.
-///         // If we don't remove it, we could end up in an infinite loop because the
-///         // map is still above the limit.
-///         entry.remove();
-///       }
-///       Ok::<(), lockable::Never>(())
+///     for mut entry in entries {
+///       evicted.borrow_mut().push(*entry.key());
+///       // We have to remove the entry from the map, the map doesn't do it for us.
+///       // If we don't remove it, we could end up in an infinite loop because the
+///       // map is still above the limit.
+///       entry.remove();
 ///     }
+///     Ok::<(), lockable::Never>(())
 ///   }
 /// }).await?;
 ///
