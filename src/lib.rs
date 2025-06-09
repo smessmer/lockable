@@ -98,6 +98,13 @@
 //! # Ok::<(), lockable::Never>(())}).unwrap();
 //! ```
 //!
+//! ## WARNING: Deadlocks
+//! This data structure is powerful and with great power comes great danger (or something like that).
+//! Having concurrent threads or tasks lock keys in an arbitrary order can easily lead to deadlocks
+//! where one thread is waiting for a lock held by another thread, while the second thread is
+//! waiting for a lock held by the first thread.
+//! Be careful and apply common deadlock prevention strategies, e.g. always lock keys in the same order.
+//!
 //! ## Crate Features
 //! - `lru`: Enables the [LockableLruCache](crate::lockable_lru_cache::LockableLruCache)
 //!    type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
