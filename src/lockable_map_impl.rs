@@ -490,7 +490,7 @@ where
         this: S,
     ) -> impl Stream<Item = Guard<K, V, C, S>> {
         let entries = this.borrow()._entries();
-        entries
+        let stream = entries
             .iter()
             .map(|(key, mutex)| {
                 let this = this.clone();
@@ -513,7 +513,11 @@ where
             })
             .collect::<FuturesUnordered<_>>()
             // Filter out entries that were removed or not-preexisting and not created while locked
-            .filter_map(futures::future::ready)
+            .filter_map(futures::future::ready);
+        // Drop to ensure that the stream doesn't accidentally capture a lock on `entries`,
+        // so that other threads can keep locking/unlocking while the stream is being processed.
+        std::mem::drop(entries);
+        stream
     }
 
     pub(super) fn _unlock(
