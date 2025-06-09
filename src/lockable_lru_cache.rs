@@ -824,6 +824,12 @@ where
     /// - If that thread/task removes the entry => the stream will not return it
     /// - If the entry was not pre-existing and that thread/task does not create it => the stream will not return it.
     ///
+    /// *Warning:* This function is risky for deadlocks since it locks in an arbitrary order.
+    /// This is fine if you process all stream entries without waiting for other locks and immedately
+    /// free the locked entries, but if processing a stream entry waits for other locks (or you do
+    /// something like `collect()` on the stream, which waits for all locks to be locked, in that
+    /// arbitrary order)`, you likely bought a one way ticket to deadlock hell.
+    ///
     /// Examples
     /// -----
     /// ```
@@ -870,6 +876,12 @@ where
     /// an `Arc<LockableLruCache>` instead of a [LockableLruCache] and returns a
     /// [Lockable::OwnedGuard] that binds its lifetime to the [LockableLruCache] in that
     /// [Arc]. Such a [Lockable::OwnedGuard] can be more easily moved around or cloned.
+    ///
+    /// *Warning:* This function is risky for deadlocks since it locks in an arbitrary order.
+    /// This is fine if you process all stream entries without waiting for other locks and immedately
+    /// free the locked entries, but if processing a stream entry waits for other locks (or you do
+    /// something like `collect()` on the stream, which waits for all locks to be locked, in that
+    /// arbitrary order)`, you likely bought a one way ticket to deadlock hell.
     ///
     /// Examples
     /// -----
