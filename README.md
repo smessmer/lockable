@@ -108,11 +108,11 @@ Be careful and apply common deadlock prevention strategies, e.g. always lock key
 
 ### Crate Features
 - `lru`: Enables the [LockableLruCache](https://docs.rs/lockable/latest/lockable/lockable_lru_cache/struct.LockableLruCache.html)
-   type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
+  type which adds a dependency on the [lru](https://crates.io/crates/lru) crate.
 - `slow_assertions`: Enables slow assertions. Don't use this in production code. It is *very* slow.
-   This is useful to assert invariants and search for bugs within the `lockable` crate.
-   It is not helpful in finding bugs in user code. If you do enable this and encounter an
-   assertion failing, please report it in a GitHub issue.
+  This is useful to assert invariants and search for bugs within the `lockable` crate.
+  It is not helpful in finding bugs in user code. If you do enable this and encounter an
+  assertion failing, please report it in a GitHub issue.
 
 <!-- cargo-rdme end -->
 
