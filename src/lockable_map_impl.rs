@@ -486,6 +486,10 @@ where
     /// - creates the entry => the stream will return them
     /// - removes the entry => the stream will not return them
     /// - entries that were locked by another thread or task but don't have a value will not be returned
+    ///
+    /// *Warning*: This locks in an arbitrary order and is prone to deadlocks if processing any stream entry
+    /// waits for other locks. A common pitfall is calling `.collect()` on the stream, which holds locks until
+    /// all locks, in an arbitrary order, are locked.
     pub async fn lock_all_entries<S: Borrow<Self> + Clone>(
         this: S,
     ) -> impl Stream<Item = Guard<K, V, C, S>> {
