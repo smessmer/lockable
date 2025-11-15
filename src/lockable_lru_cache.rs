@@ -38,7 +38,7 @@ where
         self.iter().len()
     }
 
-    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<Entry<V>> {
+    fn get_or_insert_none(&mut self, key: &K) -> GetOrInsertNoneResult<'_, Entry<V>> {
         // TODO Is there a way to only clone the key when the entry doesn't already exist?
         //      Might be possible with a RawEntry-like API. If we do that, we may
         //      even be able to remove the `Clone` bound from `K` everywhere in this library.
