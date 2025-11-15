@@ -30,8 +30,8 @@ impl<T> PrimaryArc<T> {
     }
 
     #[inline]
-    pub fn try_unwrap(this: Self) -> Result<T, Arc<T>> {
-        Arc::try_unwrap(this.inner)
+    pub fn into_inner(this: Self) -> Option<T> {
+        Arc::into_inner(this.inner)
     }
 }
 

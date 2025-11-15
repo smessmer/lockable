@@ -184,7 +184,7 @@ macro_rules! instantiate_lockable_tests {
                 map.blocking_lock_owned(key, SyncLimit::no_limit()).infallible_unwrap()
             }
             fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
-                Arc::try_unwrap(s).unwrap()
+                Arc::into_inner(s).unwrap()
             }
         }
         #[derive(Clone, Copy)]
@@ -243,7 +243,7 @@ macro_rules! instantiate_lockable_tests {
                 }
             }
             fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
-                Arc::try_unwrap(s).unwrap()
+                Arc::into_inner(s).unwrap()
             }
         }
         /// A trait that allows our test cases to abstract over different async locking methods
@@ -319,7 +319,7 @@ macro_rules! instantiate_lockable_tests {
                 }
             }
             fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
-                Arc::try_unwrap(s).unwrap()
+                Arc::into_inner(s).unwrap()
             }
         }
         #[derive(Clone, Copy)]
@@ -357,7 +357,7 @@ macro_rules! instantiate_lockable_tests {
                 map.async_lock_owned(key, AsyncLimit::no_limit()).await.infallible_unwrap()
             }
             fn extract(&self, s: Arc<$lockable_type<K, V>>) -> $lockable_type<K, V> {
-                Arc::try_unwrap(s).unwrap()
+                Arc::into_inner(s).unwrap()
             }
         }
 

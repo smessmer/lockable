@@ -611,14 +611,14 @@ where
 
         // We now have exclusive access to the LockableMapImpl object. Rust lifetime rules ensure that no other thread or task can have any
         // Guard for an entry since both owned and non-owned guards are bound to the lifetime of the LockableMapImpl (owned guards
-        // indirectly through the Arc but if user code calls this function, it means they had to call Arc::try_unwrap or something similar
+        // indirectly through the Arc but if user code calls this function, it means they had to call Arc::into_inner or something similar
         // which ensures that there are no other threads with access to it.
 
         entries
             .into_iter()
             .map(|(key, value)| {
-                let value = PrimaryArc::try_unwrap(value)
-                    .unwrap_or_else(|_| panic!("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc."));
+                let value = PrimaryArc::into_inner(value)
+                    .unwrap_or_else(|| panic!("We're the only one with access, there shouldn't be any other threads or tasks that have a copy of this Arc."));
                 let value = value.into_inner().value.expect("Invariant 2 violated. There shouldn't be any `None` entries since there aren't any ReplicaArcs.");
                 (key, value)
             })
