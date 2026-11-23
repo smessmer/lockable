@@ -832,6 +832,59 @@ mod lock_all_entries_stream {
         }
         assert_eq!(NUM_ENTRIES, num_items);
     }
+
+    /// Consuming the stream must cost about the same in an ordinary tokio task as in a task
+    /// that is exempt from tokio's cooperative budget. It does not: once the task has used up
+    /// its budget, every remaining per-entry future returns `Pending`, and the stream polls
+    /// all of them again before the task yields. That is about n*n/256 polls for n entries
+    /// instead of n. The wasted polls cannot be counted through the public API, so this test
+    /// compares two timings and only fails on a gap far outside of measurement noise
+    /// (the observed gap is a factor of 15 to 40, the test fails from a factor of 5).
+    #[test]
+    #[ignore = "known bug"]
+    fn consuming_it_in_a_tokio_task_must_not_take_quadratic_time() {
+        const NUM_ENTRIES: u32 = 20_000;
+
+        async fn consume(map: Arc<LockableHashMap<u32, u32>>) -> u32 {
+            let mut stream = map.lock_all_entries().await;
+            let mut num_items = 0;
+            while let Some(guard) = stream.next().await {
+                num_items += 1;
+                drop(guard);
+            }
+            num_items
+        }
+
+        let map = Arc::new(LockableHashMap::<u32, u32>::new());
+        for key in 0..NUM_ENTRIES {
+            map.blocking_lock(key, SyncLimit::no_limit())
+                .infallible_unwrap()
+                .insert(key);
+        }
+        let runtime = current_thread_runtime();
+
+        // Best of three for each variant, to keep scheduling noise out of the comparison
+        let mut ordinary_task = Duration::MAX;
+        let mut task_without_budget = Duration::MAX;
+        for _ in 0..3 {
+            let start = std::time::Instant::now();
+            let task = runtime.spawn(tokio::task::unconstrained(consume(Arc::clone(&map))));
+            assert_eq!(NUM_ENTRIES, runtime.block_on(task).unwrap());
+            task_without_budget = task_without_budget.min(start.elapsed());
+
+            let start = std::time::Instant::now();
+            let task = runtime.spawn(consume(Arc::clone(&map)));
+            assert_eq!(NUM_ENTRIES, runtime.block_on(task).unwrap());
+            ordinary_task = ordinary_task.min(start.elapsed());
+        }
+
+        assert!(
+            ordinary_task < task_without_budget * 5,
+            "consuming the stream over {NUM_ENTRIES} unlocked entries took {ordinary_task:?} in \
+             an ordinary tokio task, but {task_without_budget:?} in a task without cooperative \
+             budget",
+        );
+    }
 }
 
 mod misc {
