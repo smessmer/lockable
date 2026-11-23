@@ -20,11 +20,10 @@ jobs:
         toolchain: ["stable", "nightly", "1.100"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          target: armv5te-unknown-linux-gnueabi
-          default: true
+          targets: armv5te-unknown-linux-gnueabi
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
@@ -45,11 +44,10 @@ jobs:
         toolchain: ["nightly"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          target: armv5te-unknown-linux-gnueabi
-          default: true
+          targets: armv5te-unknown-linux-gnueabi
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
@@ -74,10 +72,9 @@ jobs:
         toolchain: ["stable", "nightly", "1.100"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          default: true
       - uses: actions-rs/cargo@v1
         with:
           command: ${{ matrix.command }}
@@ -97,10 +94,9 @@ jobs:
         toolchain: ["nightly"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          default: true
       - uses: actions-rs/cargo@v1
         with:
           command: "update"
@@ -116,11 +112,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: clippy
-          default: true
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -130,11 +124,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: rustfmt
-          default: true
       - uses: mbrobbel/rustfmt-check@0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -152,10 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        default: true
+    - uses: dtolnay/rust-toolchain@stable
     - run: RUSTDOCFLAGS="-Dwarnings" cargo doc
   semver_checks:
     name: Check semver
@@ -168,10 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
+      - uses: dtolnay/rust-toolchain@stable
       # Setup inspired by instructions at https://github.com/taiki-e/cargo-llvm-cov/blob/9b93f70f4c5a06d6ee221d3537067bc8d3f5b7c6/README.md
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
