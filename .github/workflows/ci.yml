@@ -25,11 +25,8 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           target: armv5te-unknown-linux-gnueabi
           default: true
-      - uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: ${{ matrix.command }}
-          args: ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
+      - uses: taiki-e/install-action@cross
+      - run: cross ${{ matrix.command }} ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
         env:
           RUST_BACKTRACE: '1'
   arm_minimal_versions:
@@ -50,16 +47,9 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           target: armv5te-unknown-linux-gnueabi
           default: true
-      - uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: "update"
-          args: "-Z direct-minimal-versions"
-      - uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: ${{ matrix.command }}
-          args: ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
+      - uses: taiki-e/install-action@cross
+      - run: cargo update -Z direct-minimal-versions
+      - run: cross ${{ matrix.command }} ${{ matrix.features }} ${{ matrix.profile }} --target armv5te-unknown-linux-gnueabi
         env:
           RUST_BACKTRACE: '1'
   x64:
@@ -78,10 +68,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           default: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: ${{ matrix.command }}
-          args: ${{ matrix.features }} ${{ matrix.profile }}
+      - run: cargo ${{ matrix.command }} ${{ matrix.features }} ${{ matrix.profile }}
         env:
           RUST_BACKTRACE: '1'
   x64_minimal_versions:
@@ -101,14 +88,8 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           default: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: "update"
-          args: "-Z direct-minimal-versions"
-      - uses: actions-rs/cargo@v1
-        with:
-          command: ${{ matrix.command }}
-          args: ${{ matrix.features }} ${{ matrix.profile }}
+      - run: cargo update -Z direct-minimal-versions
+      - run: cargo ${{ matrix.command }} ${{ matrix.features }} ${{ matrix.profile }}
         env:
           RUST_BACKTRACE: '1'
   clippy_check:
