@@ -20,7 +20,7 @@
 
 use futures::stream::StreamExt;
 use lockable::{
-    AsyncLimit, InfallibleUnwrap, LockPool, LockableHashMap, LockableLruCache, Never, SyncLimit,
+    AsyncLimit, InfallibleUnwrap, LockPool, LockableHashMap, LockableLruCache, SyncLimit,
 };
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -96,6 +96,10 @@ async fn create_stale_entry(cache: &LockableLruCache<i64, String>, key: i64) {
 /// somebody else is just about to lock that key. The panic happens while the map-wide mutex is
 /// held, and unwinding then tries to take that same mutex again: the thread hangs forever and
 /// every other user of the cache blocks behind it.
+///
+/// With tokio older than 1.54 there is one more way into that state, and it needs neither a
+/// second thread nor a stream: a task that runs out of its cooperative budget inside
+/// `async_lock` yields before it queued up for the key. tokio 1.54 acquires the lock first.
 mod scan_freezes_the_cache {
     use super::*;
 
@@ -133,73 +137,6 @@ mod scan_freezes_the_cache {
         });
         match outcome {
             Outcome::Completed(()) => {}
-            Outcome::Panicked(msg) => panic!("library panicked: {msg}"),
-            Outcome::Hung => panic!(
-                "DEADLOCK: the thread calling lock_entries_unlocked_for_at_least never returned"
-            ),
-        }
-    }
-
-    /// Single threaded, no stream, no cancellation, no timing: tokio gives each task a budget
-    /// of 128 operations per poll. A task that locks many keys in a row runs out of that budget
-    /// inside `async_lock` and yields there, before it queued up for the key.
-    #[test]
-    #[ignore = "known bug"]
-    fn while_a_task_yields_inside_async_lock() {
-        let outcome = run_with_watchdog(Duration::from_secs(10), || {
-            current_thread_runtime().block_on(async {
-                let cache = Arc::new(LockableLruCache::<i64, String>::new());
-                for key in 0..200 {
-                    cache
-                        .async_lock(key, AsyncLimit::no_limit())
-                        .await
-                        .infallible_unwrap()
-                        .insert(format!("value {key}"));
-                }
-
-                // A task that looks at all entries, one after the other
-                let progress = Arc::new(AtomicUsize::new(0));
-                let batch = tokio::spawn({
-                    let cache = Arc::clone(&cache);
-                    let progress = Arc::clone(&progress);
-                    async move {
-                        for key in 0..200 {
-                            let guard = cache
-                                .async_lock(key, AsyncLimit::no_limit())
-                                .await
-                                .infallible_unwrap();
-                            drop(guard);
-                            progress.store(key as usize + 1, Ordering::SeqCst);
-                        }
-                    }
-                });
-
-                // Let it run until the runtime makes it yield
-                tokio::task::yield_now().await;
-                let next_key = progress.load(Ordering::SeqCst) as i64;
-                if next_key >= 200 {
-                    // This version of tokio did not make the task yield, so the
-                    // test cannot get the cache into the state it needs.
-                    return Err("the task was expected to yield inside async_lock");
-                }
-
-                // Remove the entry that task is about to look at next ...
-                cache
-                    .async_lock(next_key, AsyncLimit::no_limit())
-                    .await
-                    .infallible_unwrap()
-                    .remove();
-                // ... and prune
-                let num_old_enough = cache
-                    .lock_entries_unlocked_for_at_least(Duration::ZERO)
-                    .count();
-                batch.await.unwrap();
-                Ok(num_old_enough)
-            })
-        });
-        match outcome {
-            Outcome::Completed(Ok(num_old_enough)) => assert_eq!(199, num_old_enough),
-            Outcome::Completed(Err(msg)) => panic!("test setup failed: {msg}"),
             Outcome::Panicked(msg) => panic!("library panicked: {msg}"),
             Outcome::Hung => panic!(
                 "DEADLOCK: the thread calling lock_entries_unlocked_for_at_least never returned"
@@ -484,7 +421,7 @@ mod stale_entries {
                                 for mut entry in entries {
                                     entry.remove();
                                 }
-                                Ok::<(), Never>(())
+                                Ok::<(), !>(())
                             },
                         },
                     )
@@ -532,7 +469,7 @@ mod stale_entries {
                                 for mut entry in entries {
                                     entry.remove();
                                 }
-                                Ok::<(), Never>(())
+                                Ok::<(), !>(())
                             },
                         },
                     )
@@ -607,7 +544,7 @@ mod soft_limit {
                                 evicted.push(*entry.key());
                                 entry.remove();
                             }
-                            Ok::<(), Never>(())
+                            Ok::<(), !>(())
                         },
                     },
                 )
@@ -640,7 +577,7 @@ mod soft_limit {
                             evicted.push(*entry.key());
                             entry.remove();
                         }
-                        Ok::<(), Never>(())
+                        Ok::<(), !>(())
                     },
                 },
             )
@@ -672,7 +609,7 @@ mod soft_limit {
                             evicted.push(*entry.key());
                             entry.remove();
                         }
-                        Ok::<(), Never>(())
+                        Ok::<(), !>(())
                     },
                 },
             )
@@ -703,7 +640,7 @@ mod soft_limit {
                             evicted.borrow_mut().push(*entry.key());
                             entry.remove();
                         }
-                        Ok::<(), Never>(())
+                        Ok::<(), !>(())
                     },
                 },
             )
