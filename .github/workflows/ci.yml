@@ -19,7 +19,7 @@ jobs:
         features: ["", "--no-default-features", "--all-features"]
         toolchain: ["stable", "nightly", "1.100"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -43,7 +43,7 @@ jobs:
         # Nightly because -Z direct-minimal-versions is a nightly cargo featur
         toolchain: ["nightly"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -71,7 +71,7 @@ jobs:
         features: ["", "--no-default-features", "--all-features"]
         toolchain: ["stable", "nightly", "1.100"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -93,7 +93,7 @@ jobs:
         # Nightly because -Z direct-minimal-versions is a nightly cargo featur
         toolchain: ["nightly"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -111,7 +111,7 @@ jobs:
     name: Linter (clippy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -123,18 +123,18 @@ jobs:
     name: Code Formatter (rustfmt)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: mbrobbel/rustfmt-check@0.15.0
+      - uses: mbrobbel/rustfmt-check@0.23.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
   sync_readme:
     name: Sync README.md (cargo sync-readme)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - run: cargo install cargo-rdme
     - run: ./gen_readme.sh
     # Fail job if gen_readme.sh introduced changes. If this fails, then we need to run gen_readme.sh locally and add it to the commit.
@@ -143,20 +143,20 @@ jobs:
     name: Find dead doc links
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
     - run: RUSTDOCFLAGS="-Dwarnings" cargo doc
   semver_checks:
     name: Check semver
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: obi1kenobi/cargo-semver-checks-action@v2
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # Setup inspired by instructions at https://github.com/taiki-e/cargo-llvm-cov/blob/9b93f70f4c5a06d6ee221d3537067bc8d3f5b7c6/README.md
       - name: Install cargo-llvm-cov
@@ -164,7 +164,7 @@ jobs:
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}  # not required for public repos, but leaving it here because it seems we run into rate limit issues on Codecov's API without it.
           files: lcov.info
