@@ -1562,4 +1562,99 @@ mod tests {
         let lockable_map: LockableLruCache<i64, String> = Default::default();
         assert_eq!(0, lockable_map.num_entries_or_locked());
     }
+
+    /// Reproductions of bugs found in a correctness audit, see also `tests/audit_repro.rs`.
+    /// Every test asserts the expected behavior, so it fails for as long as the bug exists.
+    /// They are `#[ignore]`d to keep `cargo test` green. Run them with
+    /// `cargo test --lib audit_repro -- --ignored`.
+    mod audit_repro {
+        use super::*;
+
+        async fn insert(cache: &LockableLruCache<i64, String, MockTime>, key: i64) {
+            cache
+                .async_lock(key, AsyncLimit::no_limit())
+                .await
+                .unwrap()
+                .insert(format!("Value {key}"));
+        }
+
+        fn unlocked_for_at_least(
+            cache: &LockableLruCache<i64, String, MockTime>,
+            millis: u64,
+        ) -> Vec<i64> {
+            cache
+                .lock_entries_unlocked_for_at_least(Duration::from_millis(millis))
+                .map(|guard| *guard.key())
+                .collect()
+        }
+
+        /// `lock_entries_unlocked_for_at_least` locks the first entry that is not old enough
+        /// to look at it, and unlocking it again sets its `last_unlocked` timestamp to now.
+        #[tokio::test]
+        #[ignore = "known bug"]
+        async fn looking_at_an_entry_must_not_reset_its_age() {
+            let cache = LockableLruCache::<i64, String, MockTime>::new();
+            insert(&cache, 1).await;
+
+            cache
+                .time_provider()
+                .advance_time(Duration::from_millis(400));
+            assert_eq!(Vec::<i64>::new(), unlocked_for_at_least(&cache, 500));
+
+            // Now it is 800ms since the entry was last unlocked by the user
+            cache
+                .time_provider()
+                .advance_time(Duration::from_millis(400));
+            assert_eq!(vec![1], unlocked_for_at_least(&cache, 500));
+        }
+
+        /// A periodic pruning task: every 100ms, remove what was unlocked for at least 500ms.
+        /// Because of the reset above, it never gets anything in a whole (simulated) minute.
+        #[tokio::test]
+        #[ignore = "known bug"]
+        async fn pruning_more_often_than_the_duration_must_still_prune() {
+            let cache = LockableLruCache::<i64, String, MockTime>::new();
+            insert(&cache, 1).await;
+            insert(&cache, 2).await;
+            insert(&cache, 3).await;
+
+            let mut pruned = vec![];
+            for _ in 0..600 {
+                cache
+                    .time_provider()
+                    .advance_time(Duration::from_millis(100));
+                for mut guard in
+                    cache.lock_entries_unlocked_for_at_least(Duration::from_millis(500))
+                {
+                    pruned.push(*guard.key());
+                    guard.remove();
+                }
+            }
+            assert_eq!(vec![1, 2, 3], pruned);
+        }
+
+        /// The position of an entry in the LRU order is set when it gets locked, its
+        /// `last_unlocked` timestamp when it gets unlocked. Entry 1 is locked first and
+        /// unlocked last, which leaves the order [1, 2] with entry 1 being the younger one.
+        /// The scan stops at entry 1 and does not look at entry 2.
+        #[tokio::test]
+        #[ignore = "known bug"]
+        async fn old_entry_must_not_be_hidden_behind_an_entry_that_was_locked_for_longer() {
+            let cache = LockableLruCache::<i64, String, MockTime>::new();
+            insert(&cache, 1).await;
+            insert(&cache, 2).await;
+
+            let guard1 = cache.async_lock(1, AsyncLimit::no_limit()).await.unwrap();
+            let guard2 = cache.async_lock(2, AsyncLimit::no_limit()).await.unwrap();
+            drop(guard2);
+            cache.time_provider().advance_time(Duration::from_secs(1));
+            drop(guard1);
+            cache
+                .time_provider()
+                .advance_time(Duration::from_millis(100));
+
+            // Now entry 2 is unlocked for 1.1s and entry 1 for 0.1s
+            assert_eq!(vec![2], unlocked_for_at_least(&cache, 500));
+        }
+    }
 }
