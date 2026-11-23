@@ -300,6 +300,7 @@ mod stale_entries {
     }
 
     /// The holder and the waiter are cancelled together, here by a timeout around both.
+    /// What matters is the order: `join!` drops the holder's branch first, then the waiter's.
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "known bug"]
     async fn holder_and_waiter_cancelled_together() {
@@ -505,6 +506,83 @@ mod stale_entries {
             ),
         }
     }
+
+    /// The same missing cleanup, without any stale entry and with a key that has a value all
+    /// the time: a waiter that was just handed the lock gets cancelled at the very moment the
+    /// eviction scan of another thread looks at that entry. The scan could not lock the entry,
+    /// then finds nobody else referencing it, and panics ("Invariant violated") with the
+    /// map-wide mutex held, which poisons the map.
+    /// This is a race, so the test can pass by accident. It usually hits within a second,
+    /// the test gives it twenty (and runs for all of them once the bug is fixed).
+    #[test]
+    #[ignore = "known bug"]
+    fn cancellation_racing_with_an_eviction_scan() {
+        let cache = Arc::new(LockableLruCache::<i64, String>::new());
+        let stop = Arc::new(AtomicBool::new(false));
+
+        // One thread keeps cancelling a waiter that was just handed the lock
+        let canceller = std::thread::spawn({
+            let cache = Arc::clone(&cache);
+            let stop = Arc::clone(&stop);
+            move || {
+                catch_unwind(AssertUnwindSafe(|| {
+                    let mut round = 0u32;
+                    while !stop.load(Ordering::Relaxed) {
+                        round = round.wrapping_add(1);
+                        let mut guard = cache
+                            .blocking_lock(1, SyncLimit::no_limit())
+                            .infallible_unwrap();
+                        guard.insert(String::from("value"));
+                        let mut waiter = Box::pin(cache.async_lock(1, AsyncLimit::no_limit()));
+                        assert!(poll_once(waiter.as_mut()).is_pending());
+                        // The lock goes to the waiter ...
+                        drop(guard);
+                        for _ in 0..(round % 32) {
+                            std::hint::spin_loop();
+                        }
+                        // ... and the waiter gets cancelled
+                        drop(waiter);
+                    }
+                }))
+                .map_err(panic_message)
+            }
+        });
+        // Another thread keeps making locking calls that look for an entry to evict
+        let evictor = std::thread::spawn({
+            let cache = Arc::clone(&cache);
+            let stop = Arc::clone(&stop);
+            move || {
+                catch_unwind(AssertUnwindSafe(|| {
+                    while !stop.load(Ordering::Relaxed) {
+                        let _ = cache.try_lock(
+                            2,
+                            SyncLimit::SoftLimit {
+                                max_entries: 1.try_into().unwrap(),
+                                // Keep the entry and give up on locking key 2
+                                on_evict: |_entries| Err::<(), ()>(()),
+                            },
+                        );
+                    }
+                }))
+                .map_err(panic_message)
+            }
+        });
+
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(20)
+            && !canceller.is_finished()
+            && !evictor.is_finished()
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        stop.store(true, Ordering::Relaxed);
+
+        assert_eq!(
+            (Ok(()), Ok(())),
+            (evictor.join().unwrap(), canceller.join().unwrap()),
+            "(thread making locking calls with a limit, thread cancelling waiters)"
+        );
+    }
 }
 
 /// `SoftLimit` evicts in situations where the locking call cannot exceed the limit,
@@ -650,6 +728,110 @@ mod soft_limit {
 
         assert_eq!(vec![1], *evicted.borrow());
     }
+
+    /// A `LockableHashMap` that is limited to 16 entries gets 2000 different keys, one after
+    /// the other. A limit "can be used to cause old entries to be evicted" (documentation of
+    /// `SyncLimit`), so in the end the map should hold keys that were inserted recently.
+    ///
+    /// But the entries for `on_evict` are picked in the iteration order of
+    /// `std::collections::HashMap`, and once the map has been full for a short while, the first
+    /// entry in that order is always the one that was inserted last. From then on, every call
+    /// evicts what the previous call inserted, and the other 15 entries stay forever.
+    #[test]
+    #[ignore = "known bug"]
+    fn hash_map_must_evict_old_entries_and_not_the_newest_one() {
+        const LIMIT: usize = 16;
+        const INSERTS: i64 = 2000;
+        let map = LockableHashMap::<i64, String>::new();
+
+        let mut newest_key = None;
+        let mut evictions = 0;
+        let mut evictions_of_the_newest_entry = 0;
+        for key in 0..INSERTS {
+            let mut guard = map
+                .blocking_lock(
+                    key,
+                    SyncLimit::SoftLimit {
+                        max_entries: LIMIT.try_into().unwrap(),
+                        on_evict: |entries| {
+                            for mut entry in entries {
+                                evictions += 1;
+                                if Some(*entry.key()) == newest_key {
+                                    evictions_of_the_newest_entry += 1;
+                                }
+                                entry.remove();
+                            }
+                            Ok::<(), !>(())
+                        },
+                    },
+                )
+                .infallible_unwrap();
+            guard.insert(format!("value {key}"));
+            drop(guard);
+            newest_key = Some(key);
+        }
+
+        // The keys are numbered in the order they were inserted, so a small key is an old entry.
+        let mut old_keys_still_in_the_map = map.keys_with_entries_or_locked();
+        old_keys_still_in_the_map.retain(|key| *key < INSERTS / 2);
+        old_keys_still_in_the_map.sort();
+        assert!(
+            old_keys_still_in_the_map.is_empty() && evictions_of_the_newest_entry < evictions / 2,
+            "{evictions_of_the_newest_entry} of {evictions} evictions threw out the entry that \
+             had just been inserted, and {} of the {LIMIT} entries are left over from the first \
+             {} of {INSERTS} inserts: {old_keys_still_in_the_map:?}",
+            old_keys_still_in_the_map.len(),
+            INSERTS / 2,
+        );
+    }
+}
+
+/// A `lock_all_entries` stream used to take the lock of an entry only when it handed that
+/// entry out (unless somebody else held the entry), so everything the stream had not reached
+/// yet stayed usable for everybody else while the consumer was busy with an item. With tokio
+/// 1.54 or newer that only holds until the consuming task has used up its cooperative budget
+/// (128 operations per poll): tokio's mutex now takes the lock before it checks the budget,
+/// and every per-entry future that the stream polls from then on takes its lock and stays
+/// pending. The stream then sits on the locks of all entries it has not returned yet, until
+/// the consumer gets to them or drops the stream.
+mod lock_all_entries_stream {
+    use super::*;
+
+    /// One task, no contention: while the consumer holds the guard of one entry, every other
+    /// entry must still be lockable.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "known bug"]
+    async fn must_not_lock_entries_it_has_not_returned_yet() {
+        const NUM_ENTRIES: i64 = 300;
+
+        let map = LockableHashMap::<i64, String>::new();
+        for key in 0..NUM_ENTRIES {
+            map.async_lock(key, AsyncLimit::no_limit())
+                .await
+                .infallible_unwrap()
+                .insert(format!("value {key}"));
+        }
+
+        let mut stream = map.lock_all_entries().await;
+        let mut num_items = 0;
+        while let Some(guard) = stream.next().await {
+            num_items += 1;
+            let num_other_keys_locked = (0..NUM_ENTRIES)
+                .filter(|key| key != guard.key())
+                .filter(|key| {
+                    map.try_lock(*key, SyncLimit::no_limit())
+                        .infallible_unwrap()
+                        .is_none()
+                })
+                .count();
+            assert_eq!(
+                0, num_other_keys_locked,
+                "the stream returned item {num_items} and its guard is the only one in use, \
+                 but {num_other_keys_locked} other keys are locked",
+            );
+        }
+        assert_eq!(NUM_ENTRIES, num_items);
+    }
 }
 
 mod misc {
@@ -777,6 +959,82 @@ mod misc {
         assert!(
             matches!(outcome, Outcome::Completed(())),
             "dropping the guard: {outcome:?}"
+        );
+    }
+
+    /// A locking call with a `SoftLimit` drops the `on_evict` closure while it holds the
+    /// map-wide mutex, also when the map is far below the limit and `on_evict` is never
+    /// called. Here the closure owns a guard for another key of the same cache. Dropping the
+    /// closure drops that guard, and `Guard::drop` needs the map-wide mutex: the locking call
+    /// never returns and the cache is frozen for everybody else.
+    #[test]
+    #[ignore = "known bug"]
+    fn on_evict_closure_that_owns_a_guard_of_the_same_cache() {
+        let outcome = run_with_watchdog(Duration::from_secs(5), || {
+            let cache = Arc::new(LockableLruCache::<i64, String>::new());
+            let parent = cache
+                .blocking_lock_owned(1, SyncLimit::no_limit())
+                .infallible_unwrap();
+            let child = cache
+                .blocking_lock_owned(
+                    2,
+                    SyncLimit::SoftLimit {
+                        max_entries: 100.try_into().unwrap(),
+                        on_evict: move |entries| {
+                            let _keep_locked_while_evicting = &parent;
+                            for mut entry in entries {
+                                entry.remove();
+                            }
+                            Ok::<(), !>(())
+                        },
+                    },
+                )
+                .infallible_unwrap();
+            drop(child);
+            cache.num_entries_or_locked()
+        });
+        assert!(
+            matches!(outcome, Outcome::Completed(0)),
+            "locking call: {outcome:?}"
+        );
+    }
+
+    /// The async locking functions have their own copy of that code.
+    #[test]
+    #[ignore = "known bug"]
+    fn async_on_evict_closure_that_owns_a_guard_of_the_same_cache() {
+        let outcome = run_with_watchdog(Duration::from_secs(5), || {
+            current_thread_runtime().block_on(async {
+                let cache = Arc::new(LockableLruCache::<i64, String>::new());
+                let parent = cache
+                    .async_lock_owned(1, AsyncLimit::no_limit())
+                    .await
+                    .infallible_unwrap();
+                let child = cache
+                    .async_lock_owned(
+                        2,
+                        AsyncLimit::SoftLimit {
+                            max_entries: 100.try_into().unwrap(),
+                            on_evict: move |entries| {
+                                let _keep_locked_while_evicting = &parent;
+                                async move {
+                                    for mut entry in entries {
+                                        entry.remove();
+                                    }
+                                    Ok::<(), !>(())
+                                }
+                            },
+                        },
+                    )
+                    .await
+                    .infallible_unwrap();
+                drop(child);
+                cache.num_entries_or_locked()
+            })
+        });
+        assert!(
+            matches!(outcome, Outcome::Completed(0)),
+            "locking call: {outcome:?}"
         );
     }
 }
