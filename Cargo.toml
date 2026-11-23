@@ -5,7 +5,6 @@ description = "This library offers hash map, hash set and cache data structures 
 documentation = "https://docs.rs/lockable"
 rust-version = "1.85"
 edition = "2024"
-homepage = "https://github.com/smessmer/lockable"
 keywords = ["concurrency", "thread", "locks", "mutex", "async"]
 license = "MIT OR Apache-2.0"
 name = "lockable"
