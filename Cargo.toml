@@ -23,7 +23,7 @@ slow_assertions = []
 
 [dependencies]
 futures = "^0.3"
-lru = {version = "^0.14", optional = true}
+lru = {version = "^0.19", optional = true}
 tokio = {version = "^1.45", features = ["sync", "time"]}
 derive_more = {version = "^2.0", features = ["display", "error"]}
 itertools = "^0.15"
