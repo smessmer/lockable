@@ -1,20 +1,8 @@
-use derive_more::Display;
-use std::fmt::Debug;
-
-// TODO use the never type `!` instead of this once it is stabilized
-/// A type that can never be instantiated. This can be used in a
-/// `Result<T, Never>` to indicate that an operation cannot return
-/// an error.
-#[derive(Debug, Display)]
-pub enum Never {}
-
-impl std::error::Error for Never {}
-
-/// Extension trait for `Result<T, Never>` that adds [infallible_unwrap()](InfallibleUnwrap::infallible_unwrap),
+/// Extension trait for `Result<T, !>` that adds [infallible_unwrap()](InfallibleUnwrap::infallible_unwrap),
 /// an infallible version of [unwrap()](Result::unwrap).
 pub trait InfallibleUnwrap<T> {
     /// Similar to [unwrap()](Result::unwrap), but can never fail.
-    /// This is only available on [Result<T, Never>] types
+    /// This is only available on [Result<T, !>] types
     /// that are used as a result of operations that cannot
     /// return an error.
     /// Calling [infallible_unwrap()](InfallibleUnwrap::infallible_unwrap) instead of [unwrap()](Result::unwrap)
@@ -24,7 +12,7 @@ pub trait InfallibleUnwrap<T> {
     fn infallible_unwrap(self) -> T;
 }
 
-impl<T> InfallibleUnwrap<T> for std::result::Result<T, Never> {
+impl<T> InfallibleUnwrap<T> for std::result::Result<T, !> {
     fn infallible_unwrap(self) -> T {
         self.unwrap()
     }
@@ -36,10 +24,10 @@ mod tests {
 
     #[test]
     fn test_infallible_unwrap() {
-        let result: Result<i64, Never> = Ok(4);
+        let result: Result<i64, !> = Ok(4);
         assert_eq!(4, result.infallible_unwrap());
 
-        let result: Result<(), Never> = Ok(());
+        let result: Result<(), !> = Ok(());
         {
             #![allow(clippy::unit_cmp)]
             assert_eq!((), result.infallible_unwrap());

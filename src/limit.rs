@@ -5,7 +5,6 @@ use std::num::NonZeroUsize;
 
 use crate::guard::Guard;
 use crate::lockable_map_impl::{LockableMapConfig, LockableMapImpl};
-use crate::utils::never::Never;
 
 /// An instance of this enum defines a limit on the number of entries in a [LockableLruCache](crate::LockableLruCache) or a [LockableHashMap](crate::LockableHashMap).
 /// It can be used to cause old entries to be evicted if a limit on the number of entries is exceeded in a call to the following functions:
@@ -27,7 +26,7 @@ use crate::utils::never::Never;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let lockable_map = LockableHashMap::<i64, String>::new();
 /// let guard = lockable_map.async_lock(4, AsyncLimit::no_limit()).await?;
-/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// # Ok::<(), !>(())}).unwrap();
 /// ```
 ///
 /// # Example (with limit)
@@ -58,14 +57,14 @@ use crate::utils::never::Never;
 ///       // map is still above the limit.
 ///       entry.remove();
 ///     }
-///     Ok::<(), lockable::Never>(())
+///     Ok::<(), !>(())
 ///   }
 /// }).await?;
 ///
 /// // We evicted the entry with key 4 because it was the least recently used
 /// assert_eq!(evicted.borrow().len(), 1);
 /// assert!(evicted.borrow().contains(&4));
-/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// # Ok::<(), !>(())}).unwrap();
 /// ```
 pub enum AsyncLimit<K, V, C, P, E, F, OnEvictFn>
 where
@@ -138,9 +137,9 @@ impl<K, V, C, P>
         V,
         C,
         P,
-        Never,
-        std::future::Ready<Result<(), Never>>,
-        fn(Vec<Guard<K, V, C, P>>) -> std::future::Ready<Result<(), Never>>,
+        !,
+        std::future::Ready<Result<(), !>>,
+        fn(Vec<Guard<K, V, C, P>>) -> std::future::Ready<Result<(), !>>,
     >
 where
     K: Eq + PartialEq + Hash + Clone,
@@ -180,7 +179,7 @@ where
 /// # (|| {
 /// let lockable_map = LockableHashMap::<i64, String>::new();
 /// let guard = lockable_map.blocking_lock(4, SyncLimit::no_limit())?;
-/// # Ok::<(), lockable::Never>(())})().unwrap();
+/// # Ok::<(), !>(())})().unwrap();
 /// ```
 ///
 /// # Example (with limit)
@@ -210,14 +209,14 @@ where
 ///       // map is still above the limit.
 ///       entry.remove();
 ///     }
-///     Ok::<(), lockable::Never>(())
+///     Ok::<(), !>(())
 ///   }
 /// })?;
 ///
 /// // We evicted the entry with key 4 because it was the least recently used
 /// assert_eq!(evicted.len(), 1);
 /// assert!(evicted.contains(&4));
-/// # Ok::<(), lockable::Never>(())})().unwrap();
+/// # Ok::<(), !>(())})().unwrap();
 /// ```
 pub enum SyncLimit<K, V, C, P, E, OnEvictFn>
 where
@@ -279,7 +278,7 @@ where
     },
 }
 
-impl<K, V, C, P> SyncLimit<K, V, C, P, Never, fn(Vec<Guard<K, V, C, P>>) -> Result<(), Never>>
+impl<K, V, C, P> SyncLimit<K, V, C, P, !, fn(Vec<Guard<K, V, C, P>>) -> Result<(), !>>
 where
     K: Eq + PartialEq + Hash + Clone,
     C: LockableMapConfig + Clone,
