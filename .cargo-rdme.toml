@@ -1,0 +1,7 @@
+[intralinks]
+# cargo-rdme pins its own nightly toolchain for resolving intralinks, but that one is older than
+# our MSRV (see `rust-version` in Cargo.toml) and refuses to build this crate. So we pin a newer one.
+# It has to be a nightly whose rustdoc JSON format is still understood by cargo-rdme. When updating
+# cargo-rdme, try removing this override (once its own pin is >= our MSRV) or bump the date.
+# gen_readme.sh reads this value and installs the toolchain.
+rustdoc-toolchain = "nightly-2026-11-23"

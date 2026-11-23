@@ -1,4 +1,11 @@
-Version 0.2.0 (unreleased)
+Version 0.3.0
+-------------
+* MSRV is now Rust 1.100
+* Updated dependency versions
+* Internal code modernizations, use never type
+
+
+Version 0.2.0
 -------------
 * MSRV is now Rust 1.85, edition changed to Rust 2024
 * Remove dependency on the async-trait crate

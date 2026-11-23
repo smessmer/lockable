@@ -468,13 +468,13 @@ where
         // and cause this very deadlock.
 
         std::mem::drop(entries);
-        if let Some(last_entry) = previously_unlocked_entries.pop() {
-            if take_while_condition(&last_entry) {
-                // It actually fulfilled the take_while_condition.
-                // This can happen if all entries in the map fulfill the condition and this was the overall last map element.
-                // We actually want to return it, so add it back to the return value.
-                previously_unlocked_entries.push(last_entry);
-            }
+        if let Some(last_entry) = previously_unlocked_entries.pop()
+            && take_while_condition(&last_entry)
+        {
+            // It actually fulfilled the take_while_condition.
+            // This can happen if all entries in the map fulfill the condition and this was the overall last map element.
+            // We actually want to return it, so add it back to the return value.
+            previously_unlocked_entries.push(last_entry);
         }
 
         previously_unlocked_entries

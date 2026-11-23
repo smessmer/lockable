@@ -17,7 +17,7 @@ pub trait Lockable<K, V> {
     /// let map = LockableHashMap::<usize, String>::new();
     /// let guard: <LockableHashMap<usize, String> as Lockable<usize, String>>::Guard<'_> =
     ///     map.async_lock(1, AsyncLimit::no_limit()).await?;
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     type Guard<'a>
     where
@@ -42,7 +42,7 @@ pub trait Lockable<K, V> {
     /// let map = Arc::new(LockableHashMap::<usize, String>::new());
     /// let guard: <LockableHashMap<usize, String> as Lockable<usize, String>>::OwnedGuard =
     ///     map.async_lock_owned(1, AsyncLimit::no_limit()).await?;
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     type OwnedGuard;
 

@@ -40,7 +40,7 @@
 //! std::mem::drop(guard);
 //! let guard2 = lockable_cache.async_lock(5, AsyncLimit::no_limit())
 //!     .await?;
-//! # Ok::<(), lockable::Never>(())}).unwrap();
+//! # Ok::<(), !>(())}).unwrap();
 //! ```
 //!
 //! ## Lockpool example
@@ -64,7 +64,7 @@
 //! // After dropping the corresponding guard, we can lock it again
 //! std::mem::drop(guard1);
 //! let guard3 = lockpool.async_lock(4).await;
-//! # Ok::<(), lockable::Never>(())}).unwrap();
+//! # Ok::<(), !>(())}).unwrap();
 //! ```
 //!
 //! ## HashMap example
@@ -95,7 +95,7 @@
 //! std::mem::drop(guard);
 //! let guard2 = lockable_map.async_lock(5, AsyncLimit::no_limit())
 //!     .await?;
-//! # Ok::<(), lockable::Never>(())}).unwrap();
+//! # Ok::<(), !>(())}).unwrap();
 //! ```
 //!
 //! ## WARNING: Deadlocks
@@ -142,4 +142,4 @@ pub use lockable_hash_map::LockableHashMap;
 pub use lockable_lru_cache::LockableLruCache;
 pub use lockable_trait::Lockable;
 pub use lockpool::LockPool;
-pub use utils::never::{InfallibleUnwrap, Never};
+pub use utils::never::InfallibleUnwrap;

@@ -23,7 +23,7 @@ use super::utils::never::InfallibleUnwrap;
 /// // After dropping the corresponding guard, we can lock it again
 /// std::mem::drop(guard1);
 /// let guard3 = pool.async_lock(4).await;
-/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// # Ok::<(), !>(())}).unwrap();
 /// ```
 ///
 /// You can use an arbitrary type to index locks by, as long as that type implements [PartialEq] + [Eq] + [Hash] + [Clone] + [Debug].
@@ -37,7 +37,7 @@ use super::utils::never::InfallibleUnwrap;
 /// let pool = LockPool::new();
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let guard = pool.async_lock(CustomLockKey(4)).await;
-/// # Ok::<(), lockable::Never>(())}).unwrap();
+/// # Ok::<(), !>(())}).unwrap();
 /// ```
 ///
 /// Under the hood, a [LockPool] is a [LockableHashMap] with `()` as a value type, i.e. `LockPool<K>` is just a wrapper
@@ -100,7 +100,7 @@ where
     /// let pool = LockPool::new();
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
     /// let guard = pool.async_lock(4).await;
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     #[inline]
     pub fn new() -> Self {
@@ -129,7 +129,7 @@ where
     ///
     /// // Now we have two locked entries
     /// assert_eq!(2, pool.num_locked());
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     #[inline]
     pub fn num_locked(&self) -> usize {
@@ -170,7 +170,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = pool.blocking_lock(4);
-    /// # Ok::<(), lockable::Never>(())})().unwrap();
+    /// # Ok::<(), !>(())})().unwrap();
     /// ```
     #[inline]
     pub fn blocking_lock(&self, key: K) -> <Self as Lockable<K, ()>>::Guard<'_> {
@@ -204,7 +204,7 @@ where
     // /// // After dropping the corresponding guard, we can lock it again
     // /// std::mem::drop(guard1);
     // /// let guard3 = pool.blocking_lock_owned(4);
-    // /// # Ok::<(), lockable::Never>(())})().unwrap();
+    // /// # Ok::<(), !>(())})().unwrap();
     // /// ```
     // #[inline]
     // pub fn blocking_lock_owned(self: &Arc<Self>, key: K) -> <Self as Lockable<K, ()>>::OwnedGuard {
@@ -242,7 +242,7 @@ where
     /// std::mem::drop(guard1);
     /// let guard3 = pool.try_lock(4);
     /// assert!(guard3.is_some());
-    /// # Ok::<(), lockable::Never>(())})().unwrap();
+    /// # Ok::<(), !>(())})().unwrap();
     /// ```
     #[inline]
     pub fn try_lock(&self, key: K) -> Option<<Self as Lockable<K, ()>>::Guard<'_>> {
@@ -278,7 +278,7 @@ where
     // /// std::mem::drop(guard1);
     // /// let guard3 = pool.try_lock_owned(4);
     // /// assert!(guard3.is_some());
-    // /// # Ok::<(), lockable::Never>(())})().unwrap();
+    // /// # Ok::<(), !>(())})().unwrap();
     // /// ```
     // #[inline]
     // pub fn try_lock_owned(
@@ -314,7 +314,7 @@ where
     /// // After dropping the corresponding guard, we can lock it again
     /// std::mem::drop(guard1);
     /// let guard3 = pool.async_lock(4).await;
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     #[inline]
     pub async fn async_lock(&self, key: K) -> <Self as Lockable<K, ()>>::Guard<'_> {
@@ -355,7 +355,7 @@ where
     // /// let guard3 = pool
     // ///     .async_lock_owned(4)
     // ///     .await;
-    // /// # Ok::<(), lockable::Never>(())}).unwrap();
+    // /// # Ok::<(), !>(())}).unwrap();
     // /// ```
     // #[inline]
     // pub async fn async_lock_owned(
@@ -395,7 +395,7 @@ where
     /// assert_eq!(2, keys.len());
     /// assert!(keys.contains(&4));
     /// assert!(keys.contains(&5));
-    /// # Ok::<(), lockable::Never>(())}).unwrap();
+    /// # Ok::<(), !>(())}).unwrap();
     /// ```
     #[inline]
     pub fn locked_keys(&self) -> Vec<K> {

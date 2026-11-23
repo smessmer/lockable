@@ -3,15 +3,14 @@ authors = ["Sebastian Messmer <messmer@cryfs.org>"]
 categories = ["asynchronous", "concurrency", "caching", "data-structures"]
 description = "This library offers hash map, hash set and cache data structures where individual entries can be locked"
 documentation = "https://docs.rs/lockable"
-rust-version = "1.85"
+rust-version = "1.100"
 edition = "2024"
-homepage = "https://github.com/smessmer/lockable"
 keywords = ["concurrency", "thread", "locks", "mutex", "async"]
 license = "MIT OR Apache-2.0"
 name = "lockable"
 readme = "README.md"
 repository = "https://github.com/smessmer/lockable"
-version = "0.2.0"
+version = "0.3.0"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -24,14 +23,14 @@ slow_assertions = []
 
 [dependencies]
 futures = "^0.3"
-lru = {version = "^0.14", optional = true}
+lru = {version = "^0.19", optional = true}
 tokio = {version = "^1.45", features = ["sync", "time"]}
 derive_more = {version = "^2.0", features = ["display", "error"]}
-itertools = "^0.14"
+itertools = "^0.15"
 
 [dev-dependencies]
 tokio = {version = "^1.45", features = ["sync", "time", "macros", "rt-multi-thread"]}
-criterion = {version = "^0.6", features = ["async_tokio"]}
+criterion = {version = "^0.8", features = ["async_tokio"]}
 
 [[bench]]
 name = "bench"
